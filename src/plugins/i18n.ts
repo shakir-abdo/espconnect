@@ -4,10 +4,11 @@ import fr from '../locales/fr';
 import zh from '../locales/zh';
 import tr from '../locales/tr';
 import de from '../locales/de';
-import { en as vuetifyEn, fr as vuetifyFr, zhHans as vuetifyZhHans, tr as vuetifyTr, de as vuetifyDe } from 'vuetify/locale';
+import cs from '../locales/cs';
+import { en as vuetifyEn, fr as vuetifyFr, zhHans as vuetifyZhHans, tr as vuetifyTr, de as vuetifyDe, cs as vuetifyCs } from 'vuetify/locale';
 
 const STORAGE_KEY = 'espconnect-language';
-export const supportedLocales = ['en', 'fr', 'zh', 'tr', 'de'] as const;
+export const supportedLocales = ['en', 'fr', 'zh', 'tr', 'de', 'cs'] as const;
 export type SupportedLocale = (typeof supportedLocales)[number];
 
 function normalizeLocale(value: unknown): SupportedLocale {
@@ -76,6 +77,10 @@ export const i18n = createI18n({
     de: {
       ...de,
       $vuetify: vuetifyDe,
+    },
+    cs: {
+      ...cs,
+      $vuetify: vuetifyCs,
     },
   },
 });

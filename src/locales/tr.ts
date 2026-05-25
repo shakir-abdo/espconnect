@@ -1,4 +1,4 @@
-﻿const tr = {
+const tr = {
   app: {
     title: 'ESPConnect',
     sectionsLabel: 'Bölümler',
@@ -570,6 +570,7 @@
     chinese: '简体中文',
     turkish: 'Türkçe',
     german: 'Almanca',
+    czech: 'Çekçe',
     switchTo: '{language} diline geç',
   },
   theme: {

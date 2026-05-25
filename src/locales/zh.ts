@@ -1,4 +1,4 @@
-﻿const zh = {
+const zh = {
   app: {
     title: 'ESPConnect',
     sectionsLabel: '板块',
@@ -569,6 +569,7 @@
     chinese: '中文',
     turkish: '土耳其语',
     german: '德语',
+    czech: '捷克语',
     switchTo: '切换到{language}',
   },
   theme: {

@@ -571,6 +571,7 @@ const de = {
     chinese: 'Chinesisch',
     turkish: 'Türkisch',
     german: 'Deutsch',
+    czech: 'Tschechisch',
     switchTo: 'Zu {language} wechseln',
   },
   theme: {

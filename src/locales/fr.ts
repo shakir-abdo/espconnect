@@ -1,4 +1,4 @@
-﻿const fr = {
+const fr = {
   app: {
     title: 'ESPConnect',
     sectionsLabel: 'Sections',
@@ -571,6 +571,7 @@
     chinese: '简体中文',
     turkish: 'Türkçe',
     german: 'Allemand',
+    czech: 'Tchèque',
     switchTo: 'Passer à {language}',
   },
   theme: {
