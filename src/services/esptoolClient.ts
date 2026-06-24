@@ -1,6 +1,6 @@
 import { ESPLoader } from 'tasmota-webserial-esptool';
 import type { Logger } from 'tasmota-webserial-esptool/dist/const.js';
-import type {} from '../types/web-serial';
+import type { } from '../types/web-serial';
 import type { ChipMetadata } from './chipMetadata/types';
 import {
   CHIP_FAMILY_ESP32S3,
@@ -21,6 +21,7 @@ import {
   ESP_SPI_FLASH_MD5,
   timeoutPerMb,
 } from 'tasmota-webserial-esptool/dist/const.js';
+import { version as tasmotaEsptoolVersion } from 'tasmota-webserial-esptool/package.json';
 import { buildSecurityFacts, type SecurityFact } from "./securityInfo";
 import { pack } from 'tasmota-webserial-esptool/dist/struct.js';
 import { DEBUG_SERIAL, DEFAULT_ROM_BAUD } from '../constants/usb';
@@ -39,7 +40,13 @@ import { readEsp32H4Metadata } from './chipMetadata/esp32h4';
 import { readEsp32H21Metadata } from './chipMetadata/esp32h21';
 import { readEsp32S31Metadata } from './chipMetadata/esp32s31';
 
-type StatusCallback = (message: string) => void;
+export type StatusPayload = {
+  translationKey?: string;
+  params?: Record<string, unknown>;
+  message?: string;
+  showInDialog?: boolean;
+};
+type StatusCallback = (payload: StatusPayload) => void;
 
 type BusySetter = (busy: boolean) => void;
 type BusyGetter = () => boolean;
@@ -62,26 +69,21 @@ export async function requestSerialPort(filters?: SerialPortFilter[]) {
 
 export interface ConnectHandshakeResult {
   chipName: string;
+  chipId?: number;
   macAddress?: string;
   securityFacts: SecurityFact[];
   flashSize?: string | null;
 }
 
 export interface EsptoolClient {
-  loader: CompatibleLoader;
+  loader: ESPLoader;
   transport: CompatibleTransport;
   connectAndHandshake: () => Promise<ConnectHandshakeResult>;
-  readPartitionTable: (offset?: number, length?: number) => Promise<any[]>;
   readChipMetadata: () => Promise<ChipMetadata>;
-}
-
-export type CompatibleLoader = ESPLoader & {
-  baudrate: number;
-  readReg: (addr: number) => Promise<number>;
-  writeReg: (addr: number, value: number, mask?: number, delayUs?: number) => Promise<void>;
+  syncWithStub: () => Promise<void>;
+  runWithBusy: <T>(fn: () => Promise<T>) => Promise<T>;
   flashMd5sum: (addr: number, size: number) => Promise<string>;
-  eraseFlash?: () => Promise<void>;
-};
+}
 
 const MD5_TIMEOUT_PER_MB = 8000;
 const sleep = (ms = 50) => new Promise(resolve => setTimeout(resolve, ms));
@@ -90,13 +92,13 @@ export class CompatibleTransport {
   device: SerialPort;
   baudrate: number;
   tracing: boolean;
-  loader:CompatibleLoader;
+  loader: ESPLoader;
   private readonly isBusy: BusyGetter;
 
   constructor(
     device: SerialPort,
     tracing: boolean,
-    loader:CompatibleLoader,
+    loader: ESPLoader,
     isBusy: BusyGetter,
   ) {
     this.device = device;
@@ -130,9 +132,12 @@ export class CompatibleTransport {
     }
   }
 
-  async *rawRead() {
+  async *rawRead(signal?: AbortSignal) {
     // Stream raw bytes from the loader's shared input buffer without fighting the bootloader reader lock.
     while (true) {
+      if (signal?.aborted) {
+        break;
+      }
       if (!this.loader) {
         break;
       }
@@ -142,6 +147,9 @@ export class CompatibleTransport {
       }
       const buffer = getInputBuffer(this.loader);
       if (buffer && buffer.length > 0) {
+        if (signal?.aborted) {
+          break;
+        }
         const chunk = new Uint8Array(buffer.splice(0));
         if (chunk.length > 0) {
           yield chunk;
@@ -151,16 +159,38 @@ export class CompatibleTransport {
       await sleep(30);
     }
   }
+
+  async writeRaw(data: Uint8Array) {
+    if (!data.length) {
+      return;
+    }
+    if (this.isBusy()) {
+      throw new Error('Serial transport busy.');
+    }
+    const loader = this.loader as unknown as { writeToStream?: (data: number[]) => Promise<void> };
+    if (loader?.writeToStream) {
+      await loader.writeToStream(Array.from(data));
+      return;
+    }
+    if (!this.device?.writable) {
+      throw new Error('Serial port is not writable.');
+    }
+    const writer = this.device.writable.getWriter();
+    try {
+      await writer.write(data);
+    } finally {
+      writer.releaseLock();
+    }
+  }
 }
 
 function createLogger(terminal: any, debugLogging: boolean): Logger {
+  const versionLabel = `v${tasmotaEsptoolVersion} webserial`;
   const writeLine = (msg: string, tag = 'ESPLoader') => {
-    const line = tag ? `[${tag}] ${msg}` : msg;
-    if (typeof terminal?.writeLine === 'function') {
-      terminal.writeLine(line);
-    } else if (typeof terminal?.write === 'function') {
-      terminal.write(`${line}\n`);
-    }
+    const timestamp = new Date().toISOString();
+    const prefix = `${versionLabel} ${timestamp} `;
+    const line = tag ? `${prefix} [${tag}]  ${msg}` : `${prefix} ${msg}`;
+    terminal.writeLine(line);
   };
 
   return {
@@ -186,51 +216,12 @@ function md5ToHex(md5: Uint8Array) {
     .join('');
 }
 
-function getInputBuffer(loader: CompatibleLoader | null | undefined) {
+function getInputBuffer(loader: ESPLoader | null | undefined) {
   try {
     return (loader as any)?._inputBuffer as number[] | undefined;
   } catch {
     return undefined;
   }
-}
-
-function decorateLoader(loader: ESPLoader, setBusy: BusySetter): CompatibleLoader {
-  const decorated = loader as CompatibleLoader;
-  decorated.baudrate = decorated.baudrate ?? DEFAULT_ROM_BAUD;
-
-  const runBusy = async <T>(fn: () => Promise<T>) => {
-    setBusy(true);
-    try {
-      return await fn();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const baseReadFlash = loader.readFlash.bind(loader);
-  decorated.readFlash = async (...args: Parameters<ESPLoader['readFlash']>) =>
-    runBusy(() => baseReadFlash(...args));
-
-  decorated.readReg = async (addr: number) => runBusy(() => loader.readRegister(addr));
-
-  decorated.writeReg = async (addr: number, value: number, mask = 0xffffffff, delayUs = 0) =>
-    runBusy(() => loader.writeRegister(addr, value, mask, delayUs));
-
-  decorated.flashMd5sum = async (addr: number, size: number) =>
-    runBusy(async () => {
-      const timeout = timeoutPerMb(MD5_TIMEOUT_PER_MB, size);
-      const payload = pack('<IIII', addr, size, 0, 0);
-      const [, res] = await loader.checkCommand(ESP_SPI_FLASH_MD5, payload, 0, timeout);
-      const md5 = new Uint8Array(res ?? []);
-      return md5ToHex(md5);
-    });
-
-  const baseEraseFlash = (loader as any).eraseFlash?.bind(loader);
-  if (baseEraseFlash) {
-    (decorated as any).eraseFlash = async () => runBusy(() => baseEraseFlash());
-  }
-
-  return decorated;
 }
 
 export function createEsptoolClient({
@@ -241,18 +232,27 @@ export function createEsptoolClient({
   debugLogging = false,
   onStatus,
 }: EsptoolOptions): EsptoolClient {
-  let busy = false;
+  let busyCount = 0;
   const setBusy: BusySetter = value => {
-    busy = value;
+    busyCount = Math.max(0, busyCount + (value ? 1 : -1));
   };
-  const isBusy: BusyGetter = () => busy;
+  const isBusy: BusyGetter = () => busyCount > 0;
+
+  const runWithBusy = async <T>(fn: () => Promise<T>) => {
+    setBusy(true);
+    try {
+      return await fn();
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const logger = createLogger(terminal, debugLogging);
   const esp_loader = new ESPLoader(port, logger);
-  let loader = decorateLoader(esp_loader, setBusy);
+  let loader = esp_loader;
   loader.debug = debugLogging;
 
-  const loaderProxy = new Proxy({} as CompatibleLoader, {
+  const loaderProxy = new Proxy({} as ESPLoader, {
     get(_target, prop) {
       const value = (loader as any)[prop];
       if (typeof value === 'function') {
@@ -286,83 +286,98 @@ export function createEsptoolClient({
 
   const transport = new CompatibleTransport(port, debugSerial ?? false, loader, isBusy);
 
-  const status = (msg: string) => onStatus?.(msg);
+  const status = (payload: StatusPayload) => onStatus?.(payload);
+  status({ message: `tasmota-webserial-esptool v(${tasmotaEsptoolVersion})`, showInDialog: false });
 
   let client: EsptoolClient;
+
+  async function syncWithStub(): Promise<void> {
+    await runWithBusy(async () => {
+      try {
+        status({
+          translationKey: 'dialogs.reconnectingStub',
+          message: 'Reconnect and sync with the stub',
+          showInDialog: false,
+        });
+        await loader.reconnect();
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        status({ message: `Could not reconnect (${message})`, showInDialog: false });
+        console.error("Reconnect");
+        console.error(e);
+      }
+    });
+  }
 
   // Open the serial port, talk to the ROM bootloader, load the stub flasher, optionally raise baud,
   // and return the detected chip name plus MAC/security metadata.
   async function connectAndHandshake(): Promise<ConnectHandshakeResult> {
-    setBusy(true);
-    try {
-      status('Opening serial port...');
+    return await runWithBusy(async () => {
+      status({
+        translationKey: 'dialogs.openingSerialPort',
+        message: 'Opening serial port...',
+        showInDialog: true,
+      });
       if (!port.readable || !port.writable) {
         await port.open({ baudRate: DEFAULT_ROM_BAUD });
       }
-      loader.baudrate = DEFAULT_ROM_BAUD;
       transport.baudrate = DEFAULT_ROM_BAUD;
 
-      status('Handshaking with ROM bootloader...');
+      status({
+        translationKey: 'dialogs.handshakingBootloader',
+        message: 'Handshaking with ROM bootloader...',
+        showInDialog: true,
+      });
       await loader.initialize();
       const macAddress = formatMac(loader.macAddr());
 
       const chipName = loader.chipName ?? 'ESP (Unknown)';
 
-      status('Loading stub flasher...');
+      status({
+        translationKey: 'dialogs.loadingStubFlasher',
+        message: 'Loading stub flasher...',
+        showInDialog: true,
+      });
       const stub = await loader.runStub();
-      loader = decorateLoader(stub, setBusy);
+      loader = stub;
+      transport.loader = loader;
       loader.debug = debugLogging;
 
       if (desiredBaud && desiredBaud !== DEFAULT_ROM_BAUD) {
-        loader.baudrate = desiredBaud;
         await loader.setBaudrate(desiredBaud);
         transport.baudrate = desiredBaud;
       }
 
       let securityInfo = undefined;
       let securityFacts: SecurityFact[] = [];
+      let chipId: number | undefined = undefined;
       try {
-        status('Getting security information...');
+        status({
+          translationKey: 'dialogs.gettingSecurityInfo',
+          message: 'Getting security information...',
+          showInDialog: false,
+        });
         securityInfo = await loader.getSecurityInfo();
+        chipId = securityInfo?.chipId;
         securityFacts = buildSecurityFacts(securityInfo, chipName);
       } catch (error) {
-        logger.error('Cannot read secutiry information');
+        logger.error('Cannot read security information', error);
       }
 
-      const result: ConnectHandshakeResult = { chipName, macAddress, securityFacts,flashSize:loader.flashSize };
+      const result: ConnectHandshakeResult = {
+        chipName,
+        chipId,
+        macAddress,
+        securityFacts,
+        flashSize: loader.flashSize,
+      };
       return result;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function readPartitionTable(offset = 0x8000, length = 0x400) {
-    const data = await loader.readFlash(offset, length);
-    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-    const decoder = new TextDecoder();
-    const entries = [];
-    for (let i = 0; i + 32 <= data.length; i += 32) {
-      const magic = view.getUint16(i, true);
-      if (magic === 0xffff || magic === 0x0000) break;
-      if (magic !== 0x50aa) continue;
-      const type = view.getUint8(i + 2);
-      const subtype = view.getUint8(i + 3);
-      const addr = view.getUint32(i + 4, true);
-      const size = view.getUint32(i + 8, true);
-      const labelBytes = data.subarray(i + 12, i + 28);
-      const label = decoder
-        .decode(labelBytes)
-        .replace(/\0/g, '')
-        .trim();
-      entries.push({ label: label || `type 0x${type.toString(16)}`, type, subtype, offset: addr, size });
-    }
-    return entries;
+    });
   }
 
   async function readChipMetadata(): Promise<ChipMetadata> {
-    setBusy(true);
-    try {
-      const chipFamily =loader.getChipFamily();
+    return await runWithBusy(async () => {
+      const chipFamily = loader.getChipFamily();
 
       if (chipFamily === CHIP_FAMILY_ESP32S3) {
         return await readEsp32S3Metadata(loader);
@@ -413,7 +428,7 @@ export function createEsptoolClient({
         crystalFreq: undefined,
         macAddress: undefined,
         pkgVersion: undefined,
-        chipRevision:undefined,
+        chipRevision: undefined,
         majorVersion: undefined,
         minorVersion: undefined,
         flashVendor: undefined,
@@ -423,17 +438,27 @@ export function createEsptoolClient({
         blockVersionMajor: undefined,
         blockVersionMinor: undefined,
       };
-    } finally {
-      setBusy(false);
-    }
+    });
+  }
+
+  async function flashMd5sum(addr: number, size: number): Promise<string> {
+    return await runWithBusy(async () => {
+      const timeout = timeoutPerMb(MD5_TIMEOUT_PER_MB, size);
+      const payload = pack('<IIII', addr, size, 0, 0);
+      const [, res] = await loader.checkCommand(ESP_SPI_FLASH_MD5, payload, 0, timeout);
+      const md5 = new Uint8Array(res ?? []);
+      return md5ToHex(md5);
+    });
   }
 
   client = {
     loader: loaderProxy,
     transport,
     connectAndHandshake,
-    readPartitionTable,
     readChipMetadata,
+    syncWithStub,
+    runWithBusy,
+    flashMd5sum,
   };
 
   return client;

@@ -1,6 +1,7 @@
 <template>
   <Transition name="device-info-reveal" mode="out-in" appear>
-    <div v-if="details" :key="detailsKey" class="device-info-wrapper device-info-wrapper--connected">
+    <div v-if="details" :key="detailsKey" class="device-info-wrapper device-info-wrapper--connected"
+      data-testid="device-summary">
       <v-card class="device-card" elevation="0">
         <v-card-text class="device-card__body">
           <div class="device-header">
@@ -16,7 +17,7 @@
                 </span>
                 <span v-if="details.mac" class="device-chip-subline-item">
                   <v-icon size="20">mdi-wifi</v-icon>
-                  {{ details.mac }}
+                  {{ details.mac }} (MAC)
                 </span>
               </div>
             </div>
@@ -24,19 +25,21 @@
           <v-card class="device-summary-card" elevation="0" variant="flat" color="primary">
             <v-card-text class="device-summary-card__content">
               <div class="device-summary">
-                <div class="summary-block">
-                  <div class="summary-label">
-                    <v-icon size="40" class="me-2">mdi-memory</v-icon>
-                    Flash & Clock
-                  </div>
-                  <div class="summary-value">{{ details.flashSize || 'Unknown' }}</div>
-                  <div v-if="details.crystal" class="summary-meta">
-                    Crystal {{ details.crystal }}
-                  </div>
-                  <div v-if="primaryFacts.length" class="summary-list">
-                    <div v-for="fact in primaryFacts" :key="fact.label" class="summary-list__item">
-                      <v-icon size="16" class="me-1">{{ fact.icon || 'mdi-information-outline' }}</v-icon>
-                      <span>{{ fact.label }} : {{ fact.value }}</span>
+                  <div class="summary-block">
+                    <div class="summary-label">
+                      <v-icon size="40" class="me-2">mdi-memory</v-icon>
+                      {{ t('deviceInfo.summary.flashClock') }}
+                    </div>
+                    <div class="summary-value">
+                      {{ details.flashSize || t('deviceInfo.unknown') }}
+                    </div>
+                    <div v-if="details.crystal" class="summary-meta">
+                      {{ t('deviceInfo.crystal', { crystal: details.crystal }) }}
+                    </div>
+                    <div v-if="primaryFacts.length" class="summary-list">
+                      <div v-for="fact in primaryFacts" :key="fact.label" class="summary-list__item">
+                        <v-icon size="16" class="me-1">{{ fact.icon || 'mdi-information-outline' }}</v-icon>
+                      <span>{{ translateFactLabel(fact) }} : {{ fact.value }}</span>
                     </div>
                   </div>
                 </div>
@@ -44,10 +47,12 @@
                 <div class="summary-block">
                   <div class="summary-label">
                     <v-icon size="40" class="me-2">mdi-lightning-bolt-outline</v-icon>
-                    Feature Set
+                    {{ t('deviceInfo.summary.featureSet') }}
                   </div>
                   <div class="summary-value ml-2">
-                    {{ hasFeatures ? `${details.features.length} capabilities` : 'No features reported' }}
+                    {{ hasFeatures
+                      ? t('deviceInfo.summary.capabilities', { count: details.features.length })
+                      : t('deviceInfo.summary.noFeatures') }}
                   </div>
 
                   <div class="summary-chips">
@@ -59,12 +64,12 @@
                       </v-chip>
                       <v-chip v-if="details.features.length > featurePreview.length"
                         class="summary-chip summary-chip--more" size="small" variant="outlined">
-                        +{{ details.features.length - featurePreview.length }} more
+                        {{ t('deviceInfo.summary.more', { count: details.features.length - featurePreview.length }) }}
                       </v-chip>
                     </template>
                     <div v-else class="summary-empty">
                       <v-icon size="16">mdi-eye-off-outline</v-icon>
-                      <span>No optional capabilities.</span>
+                      <span>{{ t('deviceInfo.summary.noOptionalCapabilities') }}</span>
                     </div>
                   </div>
                 </div>
@@ -73,26 +78,23 @@
           </v-card>
 
           <div v-if="details.factGroups?.length" class="detail-groups">
-            <v-row dense class="detail-group-row">
+            <v-row density="comfortable" class="detail-group-row">
               <v-col v-for="group in details.factGroups" :key="group.title" cols="12" md="6" class="">
                 <v-card elevation="0" variant="tonal" class="detail-card">
                   <v-card-title>
                   <v-icon class="me-2">{{ group.icon }}</v-icon>
-                  {{ group.title }}
+                  {{ translateGroupTitle(group) }}
                 </v-card-title>
                 <v-divider class="detail-card__divider" />
                 <v-card-text>
                   <div v-for="fact in group.items" :key="fact.label" class="detail-card__item">
                     <div class="detail-card__item-label">
                       <v-icon v-if="fact.icon" class="me-2">{{ fact.icon }}</v-icon>
-                      <span>{{ fact.label }}</span>
+                      <span>{{ translateFactLabel(fact) }}</span>
                     </div>
                     <div class="detail-card__item-value">
                       <template v-if="fact.label === 'PWM/LEDC'">
-                        <VTooltip
-                          location="top"
-                          :text="'PWM/LEDC capabilities are based on the chip family, not on live data read from the device.'"
-                        >
+                        <VTooltip location="top" :text="t('deviceInfo.facts.pwmTooltip')">
                           <template #activator="{ props }">
                             <span class="detail-card__value-with-icon" v-bind="props">
                               <span>{{ fact.value }}</span>
@@ -120,43 +122,53 @@
       </v-card>
     </div>
     <div v-else key="device-info-empty" class="device-info-empty">
-      <DisconnectedState subtitle="Connect to an ESP32 to see device information." />
+<DisconnectedState
+      :title="t('disconnected.defaultTitle')"
+      :subtitle="t('disconnected.deviceInfo')" />
     </div>
   </Transition>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import DisconnectedState from './DisconnectedState.vue';
-import {PRIMARY_FACTS} from  '../constants/deviceFacts';
+import { PRIMARY_FACTS, getFactLabelKey } from '../constants/deviceFacts';
+import type { DeviceDetails, DeviceFact, DeviceFactGroup } from '../types/device-details';
 
-const props = defineProps({
-  chipDetails: {
-    type: Object,
-    default: null,
+type DeviceDetailsWrapper = { value: DeviceDetails | null };
+
+const props = withDefaults(
+  defineProps<{
+    chipDetails?: DeviceDetails | DeviceDetailsWrapper | null;
+  }>(),
+  {
+    chipDetails: null,
   },
-});
+);
+
+const { t } = useI18n();
 
 const urlPattern = /^https?:\/\//i;
-const isUrl = value => typeof value === 'string' && urlPattern.test(value);
+const isUrl = (value: unknown): value is string => typeof value === 'string' && urlPattern.test(value);
 
-const details = computed(() => {
+const details = computed<DeviceDetails | null>(() => {
   const candidate = props.chipDetails;
   if (candidate && typeof candidate === 'object' && 'value' in candidate && !Array.isArray(candidate)) {
-    return candidate.value ?? null;
+    return (candidate as DeviceDetailsWrapper).value ?? null;
   }
-  return candidate ?? null;
+  return (candidate as DeviceDetails | null) ?? null;
 });
 
-const revisionLabel = computed(() => {
-  const facts = details.value?.facts;
-  if (!Array.isArray(facts)) return null;
-  return facts.find(fact => fact.label === 'Revision')?.value ?? null;
+const revisionLabel = computed<string | null>(() => {
+  return details.value?.facts.find(fact => fact.label === 'Revision')?.value ?? null;
 });
 
 const detailsKey = computed(() => {
   if (!details.value) return 'disconnected';
-  const signatureParts = [details.value.mac, revisionLabel.value, details.value.name].filter(Boolean);
+  const signatureParts = [details.value.mac, revisionLabel.value, details.value.name].filter(
+    (part): part is string => Boolean(part),
+  );
   return signatureParts.join('|');
 });
 
@@ -166,12 +178,12 @@ const hasDistinctDescription = computed(() => {
   return Boolean(description) && description !== name;
 });
 
-const primaryFacts = computed(() => {
-  const facts = Array.isArray(details.value?.facts) ? details.value.facts : [];
+const primaryFacts = computed<DeviceFact[]>(() => {
+  const facts = details.value?.facts ?? [];
   if (!facts.length) return [];
   const preferredOrder = PRIMARY_FACTS;
-  const selected = [];
-  const seen = new Set();
+  const selected: DeviceFact[] = [];
+  const seen = new Set<string>();
 
   for (const label of preferredOrder) {
     const match = facts.find(fact => fact.label === label && fact.value);
@@ -196,14 +208,22 @@ const primaryFacts = computed(() => {
 });
 
 const hasFeatures = computed(
-  () => Array.isArray(details.value?.features) && details.value.features.length > 0
+  () => (details.value?.features.length ?? 0) > 0
 );
 
-const featurePreview = computed(() => {
+const featurePreview = computed<string[]>(() => {
   if (!hasFeatures.value) return [];
   const limit = 6;
-  return details.value.features.slice(0, limit);
+  return details.value?.features.slice(0, limit) ?? [];
 });
+
+const translateFactLabel = (fact: DeviceFact): string => {
+  const key = fact.translationKey ?? getFactLabelKey(fact.label);
+  return key ? t(`deviceInfo.facts.labels.${key}`) : fact.label;
+};
+
+const translateGroupTitle = (group: DeviceFactGroup): string =>
+  group.titleKey ? t(`deviceInfo.facts.groups.${group.titleKey}`) : group.title;
 
 </script>
 
@@ -361,11 +381,13 @@ const featurePreview = computed(() => {
 
 .device-summary-card {
   border-radius: 18px;
-  border: 1px solid color-mix(in srgb, var(--v-theme-primary) 14%, transparent);
-  background: linear-gradient(150deg,
-      color-mix(in srgb, var(--v-theme-surface) 96%, transparent) 0%,
-      color-mix(in srgb, var(--v-theme-primary) 10%, transparent) 65%),
-    linear-gradient(150deg, rgba(255, 255, 255, 0.04), transparent);
+  border: 1px solid color-mix(in srgb, rgb(var(--v-theme-on-primary)) 18%, transparent);
+  background:
+    linear-gradient(135deg,
+      rgb(var(--v-theme-primary)) 0%,
+      color-mix(in srgb, rgb(var(--v-theme-primary)) 88%, #1f8fff 12%) 62%,
+      color-mix(in srgb, rgb(var(--v-theme-primary)) 82%, #1687e8 18%) 100%) !important;
+  color: rgb(var(--v-theme-on-primary)) !important;
   margin-bottom: clamp(16px, 3vw, 28px);
 }
 
@@ -386,7 +408,7 @@ const featurePreview = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  color: color-mix(in srgb, var(--v-theme-on-surface) 92%, transparent);
+  color: rgb(var(--v-theme-on-primary));
 }
 
 .summary-label {
@@ -422,13 +444,13 @@ const featurePreview = computed(() => {
   align-items: center;
   gap: 6px;
   font-size: 0.82rem;
-  color: color-mix(in srgb, var(--v-theme-on-surface) 80%, transparent);
+  color: color-mix(in srgb, rgb(var(--v-theme-on-primary)) 88%, transparent);
 }
 
 .summary-divider {
   flex: 0 0 1px;
   align-self: stretch;
-  background: color-mix(in srgb, var(--v-theme-on-surface) 18%, transparent);
+  background: color-mix(in srgb, rgb(var(--v-theme-on-primary)) 28%, transparent);
   opacity: 0.6;
 }
 
@@ -439,8 +461,8 @@ const featurePreview = computed(() => {
 }
 
 .summary-chip {
-  background: color-mix(in srgb, var(--v-theme-secondary) 18%, transparent) !important;
-  color: color-mix(in srgb, var(--v-theme-on-secondary) 90%, transparent) !important;
+  background: color-mix(in srgb, rgb(var(--v-theme-on-primary)) 18%, transparent) !important;
+  color: rgb(var(--v-theme-on-primary)) !important;
   font-size: 0.8rem;
   font-weight: 600;
   text-transform: capitalize;
@@ -448,8 +470,8 @@ const featurePreview = computed(() => {
 
 .summary-chip--more {
   background: transparent !important;
-  color: color-mix(in srgb, var(--v-theme-on-secondary) 75%, transparent) !important;
-  border-color: color-mix(in srgb, var(--v-theme-on-secondary) 35%, transparent) !important;
+  color: color-mix(in srgb, rgb(var(--v-theme-on-primary)) 82%, transparent) !important;
+  border-color: color-mix(in srgb, rgb(var(--v-theme-on-primary)) 42%, transparent) !important;
 }
 
 .summary-empty {
@@ -457,7 +479,7 @@ const featurePreview = computed(() => {
   align-items: center;
   gap: 6px;
   font-size: 0.82rem;
-  color: color-mix(in srgb, var(--v-theme-on-surface) 68%, transparent);
+  color: color-mix(in srgb, rgb(var(--v-theme-on-primary)) 78%, transparent);
 }
 
 @media (max-width: 959px) {

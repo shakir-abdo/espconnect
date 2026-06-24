@@ -13,45 +13,47 @@
         <span class="font-weight-black">{{ partitionHeading }}</span>
       </template>
       <v-card-text class="d-flex flex-column gap-4">
-        <v-select :items="partitions" item-title="label" item-value="id" density="comfortable" label="Partition name"
+        <v-select :items="partitions" item-title="label" item-value="id" density="comfortable"
+          :label="t('filesystem.partitionSelectLabel')"
           :model-value="selectedPartitionId" :disabled="loading || busy || saving || !partitions.length"
           @update:model-value="value => emit('select-partition', value)" />
         <div class="filesystem-manager__controls">
           <v-btn color="primary" variant="tonal" :disabled="!hasPartition || loading || busy || saving"
             @click="emit('refresh')">
             <v-icon start>mdi-refresh</v-icon>
-            Read
+            {{ t('filesystem.controls.read') }}
           </v-btn>
           <v-btn color="secondary" variant="outlined" :disabled="!hasPartition || loading || busy || saving"
             @click="emit('backup')">
             <v-icon start>mdi-content-save</v-icon>
-            Backup
+            {{ t('filesystem.controls.backup') }}
           </v-btn>
           <v-btn color="secondary" variant="text" :disabled="!hasPartition || loading || busy || saving"
             @click="triggerRestore">
             <v-icon start>mdi-upload</v-icon>
-            Restore Image
+            {{ t('filesystem.controls.restore') }}
           </v-btn>
           <v-btn color="error" variant="text"
             :disabled="readOnly || !hasClient || loading || busy || saving || !backupDone" @click="emit('format')">
             <v-icon start>mdi-delete-sweep</v-icon>
-            Format
+            {{ t('filesystem.controls.format') }}
           </v-btn>
           <v-spacer />
           <v-btn color="primary" variant="elevated"
             :disabled="readOnly || !dirty || !backupDone || saving || loading || busy || !hasClient"
             @click="emit('save')">
             <v-icon start>mdi-content-save-outline</v-icon>
-            Save to Flash
+            {{ t('filesystem.controls.save') }}
           </v-btn>
         </div>
         <v-alert v-if="!backupDone" type="warning" variant="tonal" density="comfortable" border="start" class="mt-2">
-          Download a backup image first (use the "Backup" button once per session). "Save to Flash"
-          becomes available after any successful backup made during this connection.
+          {{ t('filesystem.backupReminder', {
+            backup: t('filesystem.controls.backup'),
+            save: t('filesystem.controls.save'),
+          }) }}
         </v-alert>
         <p class="text-caption text-medium-emphasis mb-0">
-          Changes are staged locally until you click “Save to Flash”. A recent backup ensures you can
-          recover if something goes wrong.
+          {{ t('filesystem.saveHint', { save: t('filesystem.controls.save') }) }}
         </p>
       </v-card-text>
     </v-card>
@@ -63,28 +65,34 @@
 
     <v-card v-else :variant="dragActive ? 'outlined' : 'tonal'">
       <v-card-title class="d-flex align-center justify-space-between">
-        <span>Files</span>
+        <span>{{ t('filesystem.filesTitle') }}</span>
         <v-chip v-if="dirty" color="warning" size="large" variant="tonal">
-          Unsaved changes
+          {{ t('filesystem.unsavedChanges') }}
         </v-chip>
       </v-card-title>
       <v-card-text>
         <div v-if="usage?.capacityBytes" class="filesystem-usage">
           <div class="">
-            <span>Used {{ usagePercent }}% ({{ formatSize(usage.usedBytes) }} / {{ formatSize(usage.capacityBytes)
-            }})</span>
+            <span>
+              {{ t('filesystem.usage.used', {
+                percent: usagePercent,
+                used: formatSize(usage.usedBytes),
+                capacity: formatSize(usage.capacityBytes),
+              }) }}
+            </span>
             <span></span>
           </div>
           <v-progress-linear :model-value="usagePercent" height="15" rounded color="primary" />
           <div class="text-caption text-medium-emphasis">
-            Free {{ formatSize(usage.freeBytes) }}
+            {{ t('filesystem.usage.free', { free: formatSize(usage.freeBytes) }) }}
           </div>
         </div>
         <div>
           <v-row>
             <v-col>
               <div>
-                <v-file-input v-model="uploadFile" density="comfortable" accept="*/*" label="Select file"
+                <v-file-input v-model="uploadFile" density="comfortable" accept="*/*"
+                  :label="t('filesystem.upload.selectFile')"
                   prepend-icon="mdi-file-upload" class="upload-picker"
                   :disabled="readOnly || !hasClient || loading || busy || saving" />
               </div>
@@ -95,7 +103,7 @@
                   :disabled="readOnly || !uploadFile || !hasClient || loading || busy || saving || uploadBlocked"
                   @click="submitUpload">
                   <v-icon start>mdi-upload</v-icon>
-                  Upload
+                  {{ t('filesystem.upload.uploadButton') }}
                 </v-btn>
               </div>
             </v-col>
@@ -104,7 +112,7 @@
                 <div class="filesystem-dropzone__hint">
                   <v-icon size="32">mdi-cloud-upload-outline</v-icon>
                   <div class="filesystem-dropzone__hint-text">
-                    <strong>Drop files to add</strong>
+                    <strong>{{ t('filesystem.upload.dropHint') }}</strong>
                   </div>
                 </div>
               </div>
@@ -113,11 +121,12 @@
         </div>
         <v-divider :thickness="2" class="mt-3"></v-divider>
         <div v-if="files.length" class="filesystem-table__toolbar mt-4">
-          <v-text-field v-model="fileSearch" label="Filter files" variant="outlined" density="comfortable" clearable
+          <v-text-field v-model="fileSearch" :label="t('filesystem.filter.search')" variant="outlined"
+            density="comfortable" clearable
             hide-details prepend-inner-icon="mdi-magnify"
             class="filesystem-table__filter filesystem-table__filter--search" />
-          <v-select v-model="fileTypeFilter" :items="fileFilterOptions" item-title="label" item-value="value"
-            label="File type" density="comfortable" hide-details variant="outlined"
+            <v-select v-model="fileTypeFilter" :items="fileFilterOptions" item-title="label" item-value="value"
+            :label="t('filesystem.filter.type')" density="comfortable" hide-details variant="outlined"
             class="filesystem-table__filter filesystem-table__filter--type" />
           <v-chip size="large" variant="tonal" color="primary">
             {{ filteredCountLabel }}
@@ -127,7 +136,7 @@
           v-model:items-per-page="filesPerPage" v-model:page="filesPage" :items-per-page-options="filesPerPageOptions"
           density="compact" class="filesystem-table mt-4">
           <template #item.name="{ item }">
-            <code>{{ unwrapItem(item).name }}</code>
+            <code>{{ formatFileName(unwrapItem(item).name) }}</code>
           </template>
           <template #item.size="{ item }">
             {{ formatSize(unwrapItem(item).size) }}
@@ -140,11 +149,14 @@
                 @click="emit('view-file', unwrapItem(item).name)" />
               <v-icon size="small" variant="text" color="primary" v-if="enableDownload"
                 :disabled="loading || busy || saving || readOnly" icon="mdi-download"
-                :title="`Download ${unwrapItem(item).name}`" :aria-label="`Download ${unwrapItem(item).name}`"
+                :title="t('filesystem.actions.download', { file: unwrapItem(item).name })"
+                :aria-label="t('filesystem.actions.download', { file: unwrapItem(item).name })"
                 @click="emit('download-file', unwrapItem(item).name)" />
               <v-icon size="small" variant="text" color="error" :disabled="readOnly || loading || busy || saving"
-                icon="mdi-delete" :title="`Delete ${unwrapItem(item).name}`"
-                :aria-label="`Delete ${unwrapItem(item).name}`" @click="emit('delete-file', unwrapItem(item).name)" />
+                icon="mdi-delete"
+                :title="t('filesystem.actions.delete', { file: unwrapItem(item).name })"
+                :aria-label="t('filesystem.actions.delete', { file: unwrapItem(item).name })"
+                @click="emit('delete-file', unwrapItem(item).name)" />
             </div>
           </template>
           <template #no-data>
@@ -163,146 +175,155 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+import type { DataTableHeader } from 'vuetify';
+import type {
+  FilePreviewInfo,
+  FilePreviewInfoResolver,
+  FilePreviewMode,
+  FilesystemEntry,
+  FilesystemPartitionOption,
+  FilesystemUploadPayload,
+  FilesystemUsage,
+  PartitionId,
+} from '../types/filesystem';
 
-const props = defineProps({
-  partitions: {
-    type: Array,
-    default: () => [],
-  },
-  selectedPartitionId: {
-    type: [Number, String, null],
-    default: null,
-  },
-  files: {
-    type: Array,
-    default: () => [],
-  },
-  status: {
-    type: String,
-    default: '',
-  },
-  loading: Boolean,
-  busy: Boolean,
-  saving: Boolean,
-  readOnly: Boolean,
-  readOnlyReason: {
-    type: String,
-    default: '',
-  },
-  dirty: Boolean,
-  backupDone: Boolean,
-  error: {
-    type: String,
-    default: null,
-  },
-  hasPartition: Boolean,
-  hasClient: Boolean,
-  usage: {
-    type: Object,
-    default: () => ({
+type FileCategory = 'all' | 'text' | 'image' | 'audio' | 'other';
+type FileFilterOption = { value: FileCategory; label: string };
+type DataTableSlotItem<T> = { raw?: T };
+type FilesystemTableEntry = FilesystemEntry & { name: string; size: number };
+
+const props = withDefaults(
+  defineProps<{
+    partitions?: FilesystemPartitionOption[];
+    selectedPartitionId?: PartitionId | null;
+    files?: FilesystemEntry[];
+    status?: string;
+    loading?: boolean;
+    busy?: boolean;
+    saving?: boolean;
+    readOnly?: boolean;
+    readOnlyReason?: string;
+    dirty?: boolean;
+    backupDone?: boolean;
+    error?: string | null;
+    hasPartition?: boolean;
+    hasClient?: boolean;
+    usage?: FilesystemUsage;
+    uploadBlocked?: boolean;
+    uploadBlockedReason?: string;
+    isFileViewable?: FilePreviewInfoResolver;
+    getFilePreviewInfo?: FilePreviewInfoResolver | null;
+    fsLabel?: string;
+    partitionTitle?: string;
+    emptyStateMessage?: string;
+    enablePreview?: boolean;
+    enableDownload?: boolean;
+    loadCancelled?: boolean;
+  }>(),
+  {
+    partitions: () => [],
+    selectedPartitionId: null,
+    files: () => [],
+    status: '',
+    loading: false,
+    busy: false,
+    saving: false,
+    readOnly: false,
+    readOnlyReason: '',
+    dirty: false,
+    backupDone: false,
+    error: null,
+    hasPartition: false,
+    hasClient: false,
+    usage: () => ({
       capacityBytes: 0,
       usedBytes: 0,
       freeBytes: 0,
     }),
+    uploadBlocked: false,
+    uploadBlockedReason: '',
+    isFileViewable: () => false,
+    getFilePreviewInfo: null,
+    fsLabel: 'SPIFFS',
+    partitionTitle: '',
+    emptyStateMessage: '',
+    enablePreview: true,
+    enableDownload: true,
+    loadCancelled: false,
   },
-  uploadBlocked: Boolean,
-  uploadBlockedReason: {
-    type: String,
-    default: '',
-  },
-  isFileViewable: {
-    type: Function,
-    default: () => false,
-  },
-  getFilePreviewInfo: {
-    type: Function,
-    default: null,
-  },
-  fsLabel: {
-    type: String,
-    default: 'SPIFFS',
-  },
-  partitionTitle: {
-    type: String,
-    default: '',
-  },
-  emptyStateMessage: {
-    type: String,
-    default: '',
-  },
-  enablePreview: {
-    type: Boolean,
-    default: true,
-  },
-  enableDownload: {
-    type: Boolean,
-    default: true,
-  },
-  loadCancelled: {
-    type: Boolean,
-    default: false,
-  },
-});
+);
 
-const fileTableHeaders = Object.freeze([
-  { title: 'Name', key: 'name', sortable: true, align: 'start' },
-  { title: 'Size', key: 'size', sortable: true, align: 'start' },
-  { title: 'Actions', key: 'actions', sortable: false, align: 'end' },
+const fileTableHeaders = computed<DataTableHeader[]>(() => [
+  { title: t('filesystem.table.name'), key: 'name', sortable: true, align: 'start' },
+  { title: t('filesystem.table.size'), key: 'size', sortable: true, align: 'start' },
+  { title: t('filesystem.table.actions'), key: 'actions', sortable: false, align: 'end' },
 ]);
-const filesPerPageOptions = Object.freeze([10, 25, 50, { value: -1, title: 'All' }]);
+const filesPerPageOptions = computed<Array<number | { value: number; title: string }>>(() => [
+  10,
+  25,
+  50,
+  { value: -1, title: t('filesystem.pagination.all') },
+]);
 const FALLBACK_TEXT_EXT = ['txt', 'log', 'json', 'csv', 'ini', 'cfg', 'conf', 'htm', 'html', 'md', 'xml'];
 const FALLBACK_IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg'];
 const FALLBACK_AUDIO_EXT = ['mp3', 'wav', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'flac', 'weba', 'webm'];
-const FILE_CATEGORY_LABELS = {
-  all: 'All types',
-  text: 'Text',
-  image: 'Images',
-  audio: 'Audio',
-  other: 'Other',
-};
+const FILE_FILTER_CATEGORIES: Array<Exclude<FileCategory, 'all'>> = ['text', 'image', 'audio', 'other'];
+const getCategoryLabel = (category: FileCategory): string => t(`filesystem.fileCategory.${category}`);
 
-const emit = defineEmits([
-  'select-partition',
-  'refresh',
-  'backup',
-  'restore',
-  'download-file',
-  'view-file',
-  'validate-upload',
-  'upload-file',
-  'delete-file',
-  'format',
-  'save',
-]);
+const emit = defineEmits<{
+  (e: 'select-partition', value: PartitionId | null): void;
+  (e: 'refresh'): void;
+  (e: 'backup'): void;
+  (e: 'restore', file: File): void;
+  (e: 'download-file', name: string): void;
+  (e: 'view-file', name: string): void;
+  (e: 'validate-upload', file: File | null): void;
+  (e: 'upload-file', payload: FilesystemUploadPayload): void;
+  (e: 'delete-file', name: string): void;
+  (e: 'format'): void;
+  (e: 'save'): void;
+}>();
 
-const uploadFile = ref(null);
-const dropQueue = ref([]);
-const restoreInput = ref(null);
+const { t } = useI18n();
+
+  const uploadFile = ref<File | null>(null);
+const dropQueue = ref<File[]>([]);
+const restoreInput = ref<HTMLInputElement | null>(null);
 const fileSearch = ref('');
 const filesPerPage = ref(25);
 const filesPage = ref(1);
-const fileTypeFilter = ref('all');
+const fileTypeFilter = ref<FileCategory>('all');
 const fsLabel = computed(() => (props.fsLabel && props.fsLabel.trim()) || 'SPIFFS');
-const selectedPartition = computed(() =>
+const selectedPartition = computed<FilesystemPartitionOption | null>(() =>
   props.partitions.find(partition => partition.id === props.selectedPartitionId) ?? null,
 );
 const partitionHeading = computed(() => {
   const sizeLabel = selectedPartition.value?.sizeText?.trim();
-  const base = props.partitionTitle?.trim() || `${fsLabel.value} Partition`;
-  return sizeLabel ? `${base} · ${sizeLabel}` : base;
+  const base = props.partitionTitle?.trim() || t('filesystem.partitionTitle', { fs: fsLabel.value });
+  return sizeLabel
+    ? t('filesystem.partitionTitleWithSize', { base, size: sizeLabel })
+    : base;
 });
 const emptyMessage = computed(
-  () => props.emptyStateMessage?.trim() || `No files detected. Upload or restore a ${fsLabel.value} image to begin.`,
+  () => props.emptyStateMessage?.trim() || t('filesystem.emptyState', { fs: fsLabel.value }),
 );
 const showLoadCancelledBanner = computed(() => props.loadCancelled && !props.loading);
 const loadCancelledMessage = computed(
-  () => `${fsLabel.value} load cancelled. Use "Read" to fetch the partition again.`,
+  () =>
+    t('filesystem.loadCancelled', {
+      fs: fsLabel.value,
+      action: t('filesystem.controls.read'),
+    }),
 );
 const readOnlyMessage = computed(() => {
-  const detail = props.readOnlyReason?.trim();
-  return `${fsLabel.value} is in read-only mode. ${detail || 'Changes cannot be saved.'}`;
+  const detail = props.readOnlyReason?.trim() || t('filesystem.readOnlyDetail');
+  return t('filesystem.readOnly', {
+    fs: fsLabel.value,
+    detail,
+  });
 });
 const usagePercent = computed(() => {
   if (!props.usage || !props.usage.capacityBytes) {
@@ -316,27 +337,30 @@ const usagePercent = computed(() => {
 });
 const dragActive = ref(false);
 const autoUploadPending = ref(false);
-const fileFilterOptions = computed(() => {
-  const counts = props.files.reduce((acc, file) => {
+const fileFilterOptions = computed<FileFilterOption[]>(() => {
+  const counts: Partial<Record<Exclude<FileCategory, 'all'>, number>> = {};
+  for (const file of props.files) {
     const category = getFileCategory(file?.name);
-    acc[category] = (acc[category] || 0) + 1;
-    return acc;
-  }, {});
-  const options = [
+    counts[category] = (counts[category] ?? 0) + 1;
+  }
+
+  const options: FileFilterOption[] = [
     {
       value: 'all',
-      label: `${FILE_CATEGORY_LABELS.all} (${props.files.length})`,
+      label: `${getCategoryLabel('all')} (${props.files.length})`,
     },
   ];
-  for (const [key, label] of Object.entries(FILE_CATEGORY_LABELS)) {
-    if (key === 'all') continue;
-    if (counts[key]) {
+
+  for (const category of FILE_FILTER_CATEGORIES) {
+    const count = counts[category] ?? 0;
+    if (count) {
       options.push({
-        value: key,
-        label: `${label} (${counts[key]})`,
+        value: category,
+        label: `${getCategoryLabel(category)} (${count})`,
       });
     }
   }
+
   return options;
 });
 
@@ -357,14 +381,13 @@ const filteredFiles = computed(() => {
 const filteredCountLabel = computed(() => {
   const total = props.files.length;
   const filtered = filteredFiles.value.length;
-  const pluralize = count => (count === 1 ? 'file' : 'files');
   if (!total) {
-    return 'No files';
+    return t('filesystem.filterCount.noFiles');
   }
   if (filtered === total) {
-    return `${total} ${pluralize(total)}`;
+    return t('filesystem.filterCount.all', { count: total });
   }
-  return `${filtered} of ${total} files`;
+  return t('filesystem.filterCount.partial', { filtered, total });
 });
 const canUpload = computed(
   () =>
@@ -376,11 +399,11 @@ const canUpload = computed(
 );
 
 watch(uploadFile, file => {
-  emit('validate-upload', file || null);
+  emit('validate-upload', file ?? null);
 });
 
 watch(
-  () => [uploadFile.value, props.uploadBlocked, autoUploadPending.value],
+  () => [uploadFile.value, props.uploadBlocked, autoUploadPending.value] as const,
   ([file, blocked, auto]) => {
     if (file && !blocked && auto) {
       submitUpload(true);
@@ -424,11 +447,12 @@ watch(fileFilterOptions, options => {
 });
 
 function submitUpload(auto = false) {
-  if (!uploadFile.value || props.uploadBlocked) return;
+  const file = uploadFile.value;
+  if (!file || props.uploadBlocked) return;
   if (auto) {
     autoUploadPending.value = false;
   }
-  emit('upload-file', { file: uploadFile.value });
+  emit('upload-file', { file });
   uploadFile.value = null;
   autoUploadPending.value = false;
   scheduleNextDropUpload();
@@ -438,35 +462,45 @@ function triggerRestore() {
   restoreInput.value?.click();
 }
 
-function handleRestoreFile(event) {
-  const [file] = event.target.files || [];
+function handleRestoreFile(event: Event) {
+  const input = event.target instanceof HTMLInputElement ? event.target : null;
+  const file = input?.files?.[0] ?? null;
   if (file) {
     emit('restore', file);
   }
-  event.target.value = '';
+  if (input) {
+    input.value = '';
+  }
 }
 
-function handleDragOver(event) {
+function handleDragOver(event: DragEvent) {
+  const transfer = event.dataTransfer;
   if (!canUpload.value) {
-    event.dataTransfer.dropEffect = 'none';
+    if (transfer) {
+      transfer.dropEffect = 'none';
+    }
     dragActive.value = false;
     return;
   }
-  event.dataTransfer.dropEffect = 'copy';
+  if (transfer) {
+    transfer.dropEffect = 'copy';
+  }
   dragActive.value = true;
 }
 
-function handleDragLeave(event) {
-  if (event.currentTarget && event.relatedTarget && event.currentTarget.contains(event.relatedTarget)) {
+function handleDragLeave(event: DragEvent) {
+  const current = event.currentTarget;
+  const related = event.relatedTarget;
+  if (current instanceof Node && related instanceof Node && current.contains(related)) {
     return;
   }
   dragActive.value = false;
 }
 
-function handleDrop(event) {
+function handleDrop(event: DragEvent) {
   dragActive.value = false;
   if (!canUpload.value) return;
-  const files = Array.from(event.dataTransfer?.files ?? []).filter(file => file instanceof File);
+  const files = Array.from(event.dataTransfer?.files ?? []).filter((file): file is File => file instanceof File);
   if (!files.length) return;
   dropQueue.value.push(...files);
   scheduleNextDropUpload();
@@ -484,40 +518,69 @@ function scheduleNextDropUpload() {
   autoUploadPending.value = true;
 }
 
-function formatSize(size) {
-  if (!Number.isFinite(size)) return '-';
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+function formatSize(size: unknown): string {
+  const value = typeof size === 'number' ? size : Number(size);
+  if (!Number.isFinite(value)) return '-';
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function unwrapItem(item) {
-  if (!item || typeof item !== 'object') {
-    return {};
+function formatFileName(name?: string): string {
+  if (!name) {
+    return '';
   }
-  if ('raw' in item && item.raw && typeof item.raw === 'object') {
-    return item.raw;
-  }
-  return item;
+  const stripped = name.replace(/^\/+/, '');
+  return stripped || name;
 }
 
-function toPreviewInfo(value) {
+function unwrapItem(item: unknown): FilesystemTableEntry {
+  let entry: FilesystemEntry = {};
+  if (item && typeof item === 'object') {
+    const raw = (item as DataTableSlotItem<FilesystemEntry>).raw;
+    if (raw && typeof raw === 'object') {
+      entry = raw;
+    } else {
+      entry = item as FilesystemEntry;
+    }
+  }
+  const name = typeof entry.name === 'string' ? entry.name : '';
+  const sizeValue = typeof entry.size === 'number' ? entry.size : Number(entry.size);
+  const size = Number.isFinite(sizeValue) ? sizeValue : 0;
+  return { ...entry, name, size };
+}
+
+function isPreviewMode(value: unknown): value is FilePreviewMode {
+  return value === 'text' || value === 'image' || value === 'audio';
+}
+
+function toPreviewInfo(value: unknown): FilePreviewInfo | null {
   if (!value) {
     return null;
   }
   if (typeof value === 'string') {
-    return { mode: value };
+    return isPreviewMode(value) ? { mode: value } : null;
   }
   if (value === true) {
     return { mode: 'text' };
   }
-  if (typeof value === 'object' && value.mode) {
-    return value;
+  if (typeof value === 'object' && value !== null && 'mode' in value) {
+    const mode = (value as { mode?: unknown }).mode;
+    if (!isPreviewMode(mode)) {
+      return null;
+    }
+    const mime = (value as { mime?: unknown }).mime;
+    const ext = (value as { ext?: unknown }).ext;
+    return {
+      mode,
+      mime: typeof mime === 'string' ? mime : undefined,
+      ext: typeof ext === 'string' ? ext : undefined,
+    };
   }
   return null;
 }
 
-function getPreviewInfo(name) {
+function getPreviewInfo(name?: string): FilePreviewInfo | null {
   if (!name) {
     return null;
   }
@@ -544,7 +607,7 @@ function normalizeExtension(name = '') {
   return name.slice(idx + 1).toLowerCase();
 }
 
-function getFileCategory(name = '') {
+function getFileCategory(name = ''): Exclude<FileCategory, 'all'> {
   const info = getPreviewInfo(name);
   if (info?.mode === 'text') return 'text';
   if (info?.mode === 'image') return 'image';
@@ -556,11 +619,11 @@ function getFileCategory(name = '') {
   return 'other';
 }
 
-function isViewable(name) {
+function isViewable(name?: string): boolean {
   return Boolean(getPreviewInfo(name));
 }
 
-function previewIcon(name) {
+function previewIcon(name?: string): string {
   const info = getPreviewInfo(name);
   if (info?.mode === 'audio') {
     return 'mdi-headphones';
@@ -568,12 +631,12 @@ function previewIcon(name) {
   return 'mdi-eye';
 }
 
-function previewLabel(name) {
+function previewLabel(name?: string): string {
   const info = getPreviewInfo(name);
   if (info?.mode === 'audio') {
-    return 'Listen';
+    return t('filesystem.preview.listen');
   }
-  return 'View';
+  return t('filesystem.preview.view');
 }
 </script>
 

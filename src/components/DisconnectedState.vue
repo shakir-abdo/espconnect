@@ -5,48 +5,45 @@
         <v-avatar class="disconnected-card__avatar" :size="avatarSize">
           <v-icon :size="iconSize">{{ icon }}</v-icon>
         </v-avatar>
-        <div class="disconnected-card__text">
-          <div class="disconnected-card__title">{{ title }}</div>
-          <div class="disconnected-card__subtitle">
-            {{ subtitle }}
-          </div>
-        </div>
+    <div class="disconnected-card__text">
+      <div class="disconnected-card__title">{{ computedTitle }}</div>
+      <div class="disconnected-card__subtitle">
+        {{ computedSubtitle }}
+      </div>
+    </div>
       </v-card-text>
     </v-card>
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 
-const props = defineProps({
-  title: {
-    type: String,
-    default: 'No device connected',
-  },
-  subtitle: {
-    type: String,
-    default: 'Connect to an ESP32 to continue.',
-  },
-  icon: {
-    type: String,
-    default: 'mdi-usb-port',
-  },
-  minHeight: {
-    type: [Number, String],
-    default: 320,
-  },
-  avatarSize: {
-    type: [Number, String],
-    default: 70,
-  },
-  iconSize: {
-    type: [Number, String],
-    default: 34,
-  },
-});
+type SizeValue = number | string;
 
-const normalizedMinHeight = computed(() => {
+const props = withDefaults(
+  defineProps<{
+    title?: string;
+    subtitle?: string;
+    icon?: string;
+    minHeight?: SizeValue;
+    avatarSize?: SizeValue;
+    iconSize?: SizeValue;
+  }>(),
+  {
+    icon: 'mdi-usb-port',
+    minHeight: 320,
+    avatarSize: 70,
+    iconSize: 34,
+  },
+);
+
+const { t } = useI18n();
+const computedTitle = computed(() => props.title ?? t('disconnected.defaultTitle'));
+const computedSubtitle = computed(() => props.subtitle ?? t('disconnected.defaultSubtitle'));
+
+const normalizedMinHeight = computed<string | undefined>(() => {
   const value = props.minHeight;
   if (value == null || value === '') {
     return undefined;

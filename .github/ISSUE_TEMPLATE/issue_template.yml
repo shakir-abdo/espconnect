@@ -1,0 +1,48 @@
+name: "Issue report"
+description: "Report bugs, regressions, or request improvements."
+title: "[Issue]: "
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks for taking the time to file an issue."
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: "Issue type"
+      options:
+        - "Bug"
+        - "Feature request"
+        - "Documentation"
+    validations:
+      required: true
+  - type: input
+    id: summary
+    attributes:
+      label: "Summary"
+      description: "Short, clear description of the issue."
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: "Operating system"
+      options:
+        - "Windows"
+        - "macOS"
+        - "Linux"
+        - "Other"
+  - type: textarea
+    id: session_log
+    attributes:
+      label: "ESPConnect Session log (required)"
+      description: "Reproduce the issue and paste the full content of the Session Log tab in ESPConnect."
+      render: "shell"
+    validations:
+      required: true
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: "Checklist"
+      options:
+        - label: "I searched for existing issues."
+        - label: "I can reproduce this on the latest release."

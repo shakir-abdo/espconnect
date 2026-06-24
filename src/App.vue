@@ -1,13 +1,13 @@
-﻿<template>
+<template>
   <v-app>
     <v-navigation-drawer permanent app elevation="1">
       <v-list>
-        <v-list-item prepend-icon="mdi-usb" title="ESPConnect" :subtitle="'v' + APP_VERSION">
+        <v-list-item prepend-icon="mdi-usb" :title="t('app.title')" :subtitle="'v' + APP_VERSION">
         </v-list-item>
       </v-list>
       <v-list nav density="comfortable">
         <v-list-subheader class="app-drawer__label text-overline text-medium-emphasis">
-          Sections
+          {{ t('app.sectionsLabel') }}
         </v-list-subheader>
         <v-list-item v-for="item in navigationItems" :key="item.value" :value="item.value" :prepend-icon="item.icon"
           :active="activeTab === item.value" :disabled="item.disabled" class="app-drawer__list-item" rounded="lg"
@@ -18,7 +18,7 @@
       <v-divider class="app-drawer__divider" />
       <v-list density="comfortable">
         <v-list-subheader class="app-drawer__label text-overline text-medium-emphasis">
-          Resources
+          {{ t('app.resourcesLabel') }}
         </v-list-subheader>
         <v-list-item v-for="link in resourceLinks" :key="link.href" :href="link.href" :prepend-icon="link.icon"
           target="_blank" rel="noopener" class="app-drawer__list-item" rounded="lg">
@@ -29,21 +29,36 @@
     <v-app-bar app :elevation="8">
       <div class="status-actions">
         <v-btn color="primary" variant="outlined" density="comfortable"
-          :disabled="!serialSupported || connected || busy" @click="connect">
+          :disabled="!serialSupported || connected || busy" @click="connect" data-testid="connect-btn">
           <v-icon start>mdi-usb-flash-drive</v-icon>
-          Connect
+          {{ t('actions.connect') }}
         </v-btn>
-        <v-btn color="error" variant="outlined" density="comfortable" :disabled="!connected || busy"
-          @click="disconnect">
+        <v-btn color="error" variant="outlined" density="comfortable" :disabled="!connected || busy" @click="disconnect"
+          data-testid="disconnect-btn">
           <v-icon start>mdi-close-circle</v-icon>
-          Disconnect
+          {{ t('actions.disconnect') }}
         </v-btn>
-        <v-select v-model="selectedBaud" :items="baudrateOptions" label="Baud rate" density="compact" variant="outlined"
-          hide-details class="status-select"
+        <v-select v-model="selectedBaud" :items="baudrateOptions" :label="t('forms.baudRate')" density="compact"
+          variant="outlined" hide-details class="status-select"
           :disabled="busy || flashInProgress || maintenanceBusy || baudChangeBusy || monitorActive" />
+        <v-menu offset-y>
+          <template #activator="{ props }">
+            <v-btn variant="text" class="language-toggle-btn" v-bind="props" :title="languageMenuTitle">
+              {{ currentLanguageLabel }}
+              <v-icon>mdi-menu-down</v-icon>
+            </v-btn>
+          </template>
+          <v-list>
+            <v-list-item v-for="option in languageOptions" :key="option.code"
+              :disabled="option.code === currentLanguage" @click="selectLanguage(option.code)">
+              <v-list-item-title>{{ option.label }}</v-list-item-title>
+              <v-icon v-if="option.code === currentLanguage" size="16">mdi-check</v-icon>
+            </v-list-item>
+          </v-list>
+        </v-menu>
         <span v-if="higherBaudrateAvailable">
 
-          <v-tooltip text="A higher baudrate can be used" location="bottom">
+          <v-tooltip :text="t('tooltips.higherBaud')" location="bottom">
             <template v-slot:activator="{ props }">
               <v-btn class="text-none" stacked v-bind="props">
                 <v-badge bordered color="success" dot>
@@ -60,7 +75,7 @@
         <v-icon>{{ themeIcon }}</v-icon>
       </v-btn>
       <v-chip :color="connected ? 'success' : 'grey-darken-1'" class="text-capitalize" variant="elevated"
-        density="comfortable">
+        density="comfortable" data-testid="connection-status">
         <template #prepend>
           <v-icon v-if="connected" start class="status-chip-icon status-chip-icon--connected">
             mdi-usb-port
@@ -76,11 +91,11 @@
       <v-container fluid>
         <v-card elevation="8" class="pa-6">
           <v-alert v-if="!serialSupported" type="error" class="mb-4" variant="tonal" icon="mdi-alert-circle-outline">
-            This browser does not support the Web Serial API. Use Chrome, Edge, or another Chromium-based browser.
+            {{ t('alerts.browserUnsupported') }}
           </v-alert>
           <v-alert v-else-if="showSerialMonitorReconnectNotice" type="info" class="mb-4" variant="tonal"
             icon="mdi-console-line">
-            Serial monitor closed — click Connect to re-enter maintenance mode.
+            {{ t('alerts.serialMonitorClosed') }}
           </v-alert>
           <v-window v-model="activeTab" class="app-tab-content">
             <v-window-item value="info">
@@ -89,7 +104,17 @@
 
             <v-window-item value="partitions">
               <PartitionsTab :partition-segments="partitionSegments" :formatted-partitions="formattedPartitions"
-                :unused-summary="unusedFlashSummary" :flash-size-label="partitionFlashSizeLabel" />
+                :unused-summary="unusedFlashSummary" :flash-size-label="partitionFlashSizeLabel"
+                :connected="connected" :read-error="partitionTableReadError" />
+            </v-window-item>
+
+            <v-window-item value="nvs">
+              <NvsInspectorTab v-if="connected" :partitions="nvsPartitions" :selected-partition-id="nvsState.selectedId"
+                :loading="nvsState.loading" :status="nvsState.status" :error="nvsState.error" :result="nvsState.result"
+                :has-partition="hasNvsPartitionSelected" @select-partition="handleSelectNvsPartition"
+                @read-nvs="handleReadNvs" />
+              <DisconnectedState v-else icon="mdi-database-search" :min-height="420"
+                :title="t('disconnected.defaultTitle')" :subtitle="t('disconnected.nvs')" />
             </v-window-item>
 
             <v-window-item value="spiffs">
@@ -108,7 +133,7 @@
                 @validate-upload="handleSpiffsUploadSelection" @upload-file="handleSpiffsUpload"
                 @delete-file="handleSpiffsDelete" @format="handleSpiffsFormat" @save="handleSpiffsSave" />
               <DisconnectedState v-else icon="mdi-folder-key-outline" :min-height="420"
-                subtitle="Connect to an ESP32 to browse and edit SPIFFS files." />
+                :title="t('disconnected.defaultTitle')" :subtitle="t('disconnected.spiffs')" />
             </v-window-item>
 
             <v-window-item value="littlefs">
@@ -133,34 +158,40 @@
                 @navigate="handleLittlefsNavigate" @navigate-up="handleLittlefsNavigateUp"
                 @new-folder="handleLittlefsNewFolder" @reset-upload-block="handleLittlefsResetUploadBlock" />
               <DisconnectedState v-else icon="mdi-alpha-l-circle-outline" :min-height="420"
-                subtitle="Connect to an ESP32 with a LittleFS partition to use these tools." />
+                :title="t('disconnected.defaultTitle')" :subtitle="t('disconnected.littlefs')" />
             </v-window-item>
 
             <v-window-item value="fatfs">
-              <FilesystemManagerTab v-if="connected && fatfsAvailable" :partitions="fatfsPartitions"
-                :selected-partition-id="fatfsState.selectedId" :files="fatfsState.files" :status="fatfsState.status"
-                :loading="fatfsState.loading" :busy="fatfsState.busy" :saving="fatfsState.saving"
-                :read-only="fatfsState.readOnly" :read-only-reason="fatfsState.readOnlyReason" :dirty="fatfsState.dirty"
+              <LittlefsManagerTab v-if="connected && fatfsAvailable" :partitions="fatfsPartitions"
+                :selected-partition-id="fatfsState.selectedId" :files="fatfsVisibleFiles"
+                :current-path="fatfsState.currentPath" :status="fatfsState.status" :loading="fatfsState.loading"
+                :busy="fatfsState.busy" :saving="fatfsState.saving" :read-only="fatfsState.readOnly"
+                :read-only-reason="fatfsState.readOnlyReason" :dirty="fatfsState.dirty"
                 :backup-done="fatfsState.backupDone || fatfsState.sessionBackupDone" :error="fatfsState.error"
                 :has-partition="hasFatfsPartitionSelected" :has-client="Boolean(fatfsState.client)"
                 :usage="fatfsState.usage" :upload-blocked="fatfsState.uploadBlocked"
                 :upload-blocked-reason="fatfsState.uploadBlockedReason" :load-cancelled="fatfsState.loadCancelled"
-                fs-label="FATFS" partition-title="FATFS Partition"
+                :load-cancelled-message="t('filesystem.loadCancelled', {
+                  fs: 'FATFS',
+                  action: t('filesystem.controls.read'),
+                })" fs-label="FATFS" partition-title="FATFS Partition"
                 empty-state-message="No FATFS files found. Read the partition or upload to begin."
                 :is-file-viewable="isViewableSpiffsFile" :get-file-preview-info="resolveSpiffsViewInfo"
                 @select-partition="handleSelectFatfsPartition" @refresh="handleRefreshFatfs" @backup="handleFatfsBackup"
                 @restore="handleFatfsRestore" @download-file="handleFatfsDownloadFile" @view-file="handleFatfsView"
                 @validate-upload="handleFatfsUploadSelection" @upload-file="handleFatfsUpload"
-                @delete-file="handleFatfsDelete" @format="handleFatfsFormat" @save="handleFatfsSave" />
+                @delete-file="handleFatfsDelete" @format="handleFatfsFormat" @save="handleFatfsSave"
+                @navigate="handleFatfsNavigate" @navigate-up="handleFatfsNavigateUp" @new-folder="handleFatfsNewFolder"
+                @reset-upload-block="handleFatfsResetUploadBlock" />
               <DisconnectedState v-else icon="mdi-alpha-f-circle-outline" :min-height="420"
-                subtitle="Connect to an ESP32 with a FATFS partition to use these tools." />
+                :title="t('disconnected.defaultTitle')" :subtitle="t('disconnected.fatfs')" />
             </v-window-item>
 
             <v-window-item value="apps">
               <AppsTab v-if="connected" :apps="appPartitions" :active-slot-id="activeAppSlotId"
-                :active-summary="appActiveSummary" :loading="appMetadataLoading" :error="appMetadataError" />
+                :active-summary="appActiveSummary" :loading="appMetadataLoading" :error="appMetadataDisplayError" />
               <DisconnectedState v-else icon="mdi-application-cog-outline" :min-height="420"
-                subtitle="Connect to a device to inspect OTA application slots." />
+                :title="t('disconnected.defaultTitle')" :subtitle="t('disconnected.apps')" />
             </v-window-item>
 
             <v-window-item value="flash">
@@ -190,14 +221,15 @@
                 @download-used-flash="handleDownloadUsedFlash" @cancel-flash="handleCancelFlash"
                 @erase-flash="handleEraseFlash" @cancel-download="handleCancelDownload"
                 @select-register="handleSelectRegister" />
-              <DisconnectedState v-else icon="mdi-chip" :min-height="420"
-                subtitle="Connect to your board to flash firmware or inspect registers." />
+              <DisconnectedState v-else icon="mdi-chip" :min-height="420" :title="t('disconnected.defaultTitle')"
+                :subtitle="t('disconnected.flash')" />
             </v-window-item>
             <v-window-item value="console">
               <SerialMonitorTab :monitor-text="monitorText" :monitor-active="monitorActive"
-                :monitor-error="monitorError" :can-start="canStartMonitor" :can-command="canIssueMonitorCommands"
-                @start-monitor="startMonitor" @stop-monitor="stopMonitor({ closeConnection: true })"
-                @clear-monitor="clearMonitorOutput" @reset-board="resetBoard" />
+                :monitor-error="monitorError" :monitor-starting="monitorStarting" :can-start="canStartMonitor"
+                :can-command="canIssueMonitorCommands" @start-monitor="startMonitor" @stop-monitor="stopMonitor()"
+                @clear-monitor="clearMonitorOutput" @send-monitor-text="sendMonitorText"
+                @reset-board="enterUserFirmware" />
             </v-window-item>
 
             <v-window-item value="log">
@@ -217,7 +249,7 @@
             <v-card-title class="text-h6">
               <v-icon start
                 :color="confirmationDialog.destructive ? 'error' : 'warning'">mdi-alert-circle-outline</v-icon>
-              {{ confirmationDialog.title || 'Please confirm' }}
+              {{ confirmationDialog.title || t('dialogs.confirmationTitle') }}
             </v-card-title>
             <v-card-text class="text-body-2">
               <div class="confirmation-message">
@@ -227,11 +259,11 @@
             <v-card-actions>
               <v-spacer />
               <v-btn variant="text" @click="resolveConfirmation(false)">
-                {{ confirmationDialog.cancelText || 'Cancel' }}
+                {{ confirmationDialog.cancelText || t('dialogs.cancel') }}
               </v-btn>
               <v-btn :color="confirmationDialog.destructive ? 'error' : 'primary'" variant="tonal"
                 @click="resolveConfirmation(true)">
-                {{ confirmationDialog.confirmText || 'Continue' }}
+                {{ confirmationDialog.confirmText || t('dialogs.continue') }}
               </v-btn>
             </v-card-actions>
           </v-card>
@@ -241,7 +273,7 @@
           <v-card>
             <v-card-title class="text-h6">
               <v-icon start color="primary">mdi-usb</v-icon>
-              Connecting
+              {{ t('dialogs.connecting') }}
             </v-card-title>
             <v-card-text class="progress-dialog__body">
               <div class="progress-dialog__label">
@@ -259,11 +291,11 @@
           <v-card>
             <v-card-title class="text-h6">
               <v-icon start color="primary">mdi-content-save</v-icon>
-              LittleFS Backup
+              {{ t('dialogs.littlefsBackup') }}
             </v-card-title>
             <v-card-text class="progress-dialog__body">
               <div class="progress-dialog__label">
-                {{ littlefsBackupDialog.label || 'Preparing backup...' }}
+                {{ littlefsBackupDialog.label || t('dialogs.preparingBackup') }}
               </div>
               <v-progress-linear :model-value="littlefsBackupDialog.value" height="24" color="primary" rounded>
                 <strong>{{ Math.min(100, Math.max(0, Math.floor(littlefsBackupDialog.value))) }}%</strong>
@@ -272,7 +304,7 @@
             <v-card-actions>
               <v-spacer />
               <v-btn variant="text" @click="cancelLittlefsBackup">
-                Cancel
+                {{ t('dialogs.cancel') }}
               </v-btn>
             </v-card-actions>
           </v-card>
@@ -282,7 +314,7 @@
           <v-card>
             <v-card-title class="text-h6">
               <v-icon start color="primary">mdi-folder-sync</v-icon>
-              Loading LittleFS
+              {{ t('dialogs.littlefsLoading') }}
             </v-card-title>
             <v-card-text class="progress-dialog__body">
               <div class="progress-dialog__label">
@@ -294,7 +326,7 @@
             <v-card-actions class="progress-dialog__actions">
               <v-spacer />
               <v-btn variant="text" :disabled="littlefsLoadCancelRequested" @click="cancelLittlefsLoad">
-                Cancel
+                {{ t('dialogs.cancel') }}
               </v-btn>
             </v-card-actions>
           </v-card>
@@ -304,11 +336,11 @@
           <v-card>
             <v-card-title class="text-h6">
               <v-icon start color="primary">mdi-floppy</v-icon>
-              Saving LittleFS
+              {{ t('dialogs.littlefsSaving') }}
             </v-card-title>
             <v-card-text class="progress-dialog__body">
               <div class="progress-dialog__label">
-                {{ littlefsSaveDialog.label || 'Writing LittleFS image...' }}
+                {{ littlefsSaveDialog.label || t('dialogs.writingLittlefs') }}
               </div>
               <v-progress-linear :model-value="littlefsSaveDialog.value" height="24" color="primary" rounded>
                 <strong>{{ Math.min(100, Math.max(0, Math.floor(littlefsSaveDialog.value))) }}%</strong>
@@ -321,11 +353,11 @@
           <v-card>
             <v-card-title class="text-h6">
               <v-icon start color="primary">mdi-backup-restore</v-icon>
-              Restoring LittleFS
+              {{ t('dialogs.littlefsRestoring') }}
             </v-card-title>
             <v-card-text class="progress-dialog__body">
               <div class="progress-dialog__label">
-                {{ littlefsRestoreDialog.label || 'Writing LittleFS image...' }}
+                {{ littlefsRestoreDialog.label || t('dialogs.writingLittlefs') }}
               </div>
               <v-progress-linear :model-value="littlefsRestoreDialog.value" height="24" color="primary" rounded>
                 <strong>{{ Math.min(100, Math.max(0, Math.floor(littlefsRestoreDialog.value))) }}%</strong>
@@ -338,11 +370,11 @@
           <v-card>
             <v-card-title class="text-h6">
               <v-icon start color="primary">mdi-content-save</v-icon>
-              FATFS Backup
+              {{ t('dialogs.fatfsBackup') }}
             </v-card-title>
             <v-card-text class="progress-dialog__body">
               <div class="progress-dialog__label">
-                {{ fatfsBackupDialog.label || 'Preparing backup...' }}
+                {{ fatfsBackupDialog.label || t('dialogs.preparingBackup') }}
               </div>
               <v-progress-linear :model-value="fatfsBackupDialog.value" height="24" color="primary" rounded>
                 <strong>{{ Math.min(100, Math.max(0, Math.floor(fatfsBackupDialog.value))) }}%</strong>
@@ -351,7 +383,7 @@
             <v-card-actions>
               <v-spacer />
               <v-btn variant="text" @click="cancelFatfsBackup">
-                Cancel
+                {{ t('dialogs.cancel') }}
               </v-btn>
             </v-card-actions>
           </v-card>
@@ -606,7 +638,57 @@
           </v-card>
         </v-dialog>
 
-        <v-snackbar v-model="toast.visible" :timeout="toast.timeout" :color="toast.color" location="bottom right">
+        <v-dialog :model-value="serialPortPicker.visible" persistent max-width="640" scrollable>
+          <v-card>
+            <v-card-title class="text-h6 d-flex align-center">
+              <v-icon start color="primary">mdi-usb-port</v-icon>
+              {{ t('serialPortPicker.title') }}
+            </v-card-title>
+            <v-card-subtitle>
+              {{ t('serialPortPicker.subtitle') }}
+            </v-card-subtitle>
+            <v-card-text class="serial-port-picker__body">
+              <v-radio-group v-model="serialPortPicker.selectedPortId" hide-details>
+                <v-list class="serial-port-picker__list" density="comfortable" lines="two">
+                  <v-list-item v-for="port in serialPortPicker.ports" :key="port.portId"
+                    class="serial-port-picker__item" rounded="lg" @click="serialPortPicker.selectedPortId = port.portId"
+                    @dblclick="confirmSerialPortSelection(port.portId)">
+                    <template #prepend>
+                      <v-radio :value="port.portId" density="compact"
+                        :aria-label="getSerialPortPrimaryLabel(port)" />
+                    </template>
+                    <v-list-item-title class="serial-port-picker__port-title">
+                      <span class="serial-port-picker__port-name" :title="getSerialPortPrimaryLabel(port)">
+                        {{ getSerialPortPrimaryLabel(port) }}
+                      </span>
+                      <v-chip v-if="port.recommended" size="x-small" color="success" variant="tonal">
+                        {{ t('serialPortPicker.recommended') }}
+                      </v-chip>
+                    </v-list-item-title>
+                    <v-list-item-subtitle class="serial-port-picker__metadata"
+                      :title="getSerialPortMetadata(port) || t('serialPortPicker.noDetails')">
+                      {{ getSerialPortMetadata(port) || t('serialPortPicker.noDetails') }}
+                    </v-list-item-subtitle>
+                  </v-list-item>
+                </v-list>
+              </v-radio-group>
+            </v-card-text>
+            <v-card-actions>
+              <v-spacer />
+              <v-btn variant="text" @click="cancelSerialPortSelection">
+                {{ t('dialogs.cancel') }}
+              </v-btn>
+              <v-btn color="primary" variant="tonal" :disabled="!serialPortPicker.selectedPortId"
+                @click="confirmSerialPortSelection()">
+                <v-icon start>mdi-check</v-icon>
+                {{ t('serialPortPicker.actions.select') }}
+              </v-btn>
+            </v-card-actions>
+          </v-card>
+        </v-dialog>
+
+        <v-snackbar v-model="toast.visible" :timeout="toast.timeout" :color="toast.color" location="bottom right"
+          data-testid="toast-container">
           {{ toast.message }}
         </v-snackbar>
       </v-container>
@@ -615,24 +697,29 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useTheme } from 'vuetify';
 import DeviceInfoTab from './components/DeviceInfoTab.vue';
 import FlashFirmwareTab from './components/FlashFirmwareTab.vue';
 import AppsTab from './components/AppsTab.vue';
 import FilesystemManagerTab from './components/FilesystemManagerTab.vue';
 import LittlefsManagerTab from './components/LittlefsManagerTab.vue';
+import NvsInspectorTab from './components/NvsInspectorTab.vue';
 import AboutTab from './components/AboutTab.vue';
 import PartitionsTab from './components/PartitionsTab.vue';
 import SessionLogTab from './components/SessionLogTab.vue';
 import SerialMonitorTab from './components/SerialMonitorTab.vue';
 import DisconnectedState from './components/DisconnectedState.vue';
 import registerGuides from './data/register-guides.json';
-import { InMemorySpiffsClient } from './utils/spiffs/spiffsClient';
+import { createSpiffsFromImage, SpiffsErrorCode } from './wasm/spiffs';
 import { useFatfsManager, useLittlefsManager, useSpiffsManager } from './composables/useFilesystemManagers';
 import { useDialogs } from './composables/useDialogs';
-import { readPartitionTable } from './utils/partitions';
-import { createEsptoolClient, requestSerialPort, type CompatibleLoader, type CompatibleTransport } from './services/esptoolClient';
+import { getLanguage, setLanguage, supportedLocales, SupportedLocale } from './plugins/i18n';
+import { readPartitionTable, probePartitionTableOffset } from './utils/partitions';
+import { detectActiveOtaSlot } from './utils/ota';
+import type { ESPLoader } from 'tasmota-webserial-esptool';
+import { createEsptoolClient, requestSerialPort, type CompatibleTransport, type EsptoolClient, type StatusPayload } from './services/esptoolClient';
 import {
   SPIFFS_AUDIO_EXTENSIONS,
   SPIFFS_AUDIO_MIME_MAP,
@@ -665,38 +752,57 @@ import {
   SUPPORTED_BAUDRATES,
   TIMEOUT_CONNECT,
 } from './constants/usb';
-import { FACT_GROUP_CONFIG, FACT_ICONS } from './constants/deviceFacts';
+import { FACT_GROUP_CONFIG, FACT_ICONS, getFactLabelKey } from './constants/deviceFacts';
 import { findChipDocs } from './constants/chipDocsLinks';
 import { PWM_TABLE } from './utils/pwm-capabilities-table';
+import { parseNvsPartition, type NvsParseResult } from './lib/nvs/nvsParser';
+import type { AppPartitionMetadata } from './types/app-partitions';
+import type { DeviceDetails, DeviceFact, DeviceFactGroup } from './types/device-details';
+import type { FilePreviewInfo } from './types/filesystem';
+import type { LittlefsDiskVersionFormatter, LittlefsEntry, LittlefsEntryType, LittlefsUploadPayload } from './types/littlefs';
+import type { FormattedPartitionRow, PartitionSegment, UnusedFlashSummary } from './types/partitions';
+import type { SerialMonitorError } from './types/serial-monitor';
+import type { SessionLogTabRef } from './types/session-log';
+import type {
+  AlertType,
+  EraseFlashPayload,
+  PartitionOptionValue,
+  ProgressDialogState,
+  RegisterOption,
+  RegisterReference,
+} from './types/flash-firmware';
 
-let littlefsModulePromise = null;
-let fatfsModulePromise = null;
-const littlefsFormatDiskVersion = ref<((version: number) => string) | null>(null);
+type LittlefsWasmModule = typeof import('./wasm/littlefs/index.js');
+type FatfsWasmModule = typeof import('./wasm/fatfs/index.js');
+type DetectedFilesystem = 'littlefs' | 'fatfs' | 'spiffs';
+type PartitionTableEntry = {
+  label: string;
+  type: number;
+  subtype: number;
+  offset: number;
+  size: number;
+  detectedFilesystem?: DetectedFilesystem;
+};
+type FilesystemPartition = { id: number; label: string; offset: number; size: number; sizeText: string };
 
-// Sort device facts using the preferred display order, then fall back to name sorting.
-// function sortFacts(facts) {
-//   return [...facts].sort((a, b) => {
-//     const orderA = FACT_DISPLAY_ORDER.indexOf(a.label);
-//     const orderB = FACT_DISPLAY_ORDER.indexOf(b.label);
-//     const hasOrderA = orderA !== -1;
-//     const hasOrderB = orderB !== -1;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
 
-//     if (hasOrderA && hasOrderB) {
-//       if (orderA !== orderB) {
-//         return orderA - orderB;
-//       }
-//       return a.label.localeCompare(b.label);
-//     }
+function normalizePartitionId(value: string | number | null): number | null {
+  if (value == null) {
+    return null;
+  }
+  const parsed = typeof value === 'string' ? Number(value) : value;
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
-//     if (hasOrderA) return -1;
-//     if (hasOrderB) return 1;
-
-//     return a.label.localeCompare(b.label);
-//   });
-// }
+let littlefsModulePromise: Promise<LittlefsWasmModule> | null = null;
+let fatfsModulePromise: Promise<FatfsWasmModule> | null = null;
+const littlefsFormatDiskVersion = ref<LittlefsDiskVersionFormatter | null>(null);
 
 // Lazy-load and cache the LittleFS WASM module.
-async function loadLittlefsModule() {
+async function loadLittlefsModule(): Promise<LittlefsWasmModule> {
   if (!littlefsModulePromise) {
     littlefsModulePromise = import('./wasm/littlefs/index.js')
       .then(module => {
@@ -704,7 +810,7 @@ async function loadLittlefsModule() {
           typeof module.formatDiskVersion === 'function' ? module.formatDiskVersion : null;
         return module;
       })
-      .catch(error => {
+      .catch((error: unknown) => {
         littlefsModulePromise = null;
         littlefsFormatDiskVersion.value = null;
         throw error;
@@ -714,7 +820,7 @@ async function loadLittlefsModule() {
 }
 
 // Normalize filesystem paths by enforcing a leading slash and collapsing separators.
-function normalizeFsPath(path = '/') {
+function normalizeFsPath(path: string | null | undefined = '/') {
   let p = path || '/';
   p = p.startsWith('/') ? p : `/${p}`;
   p = p.replace(/\/+/g, '/');
@@ -722,6 +828,29 @@ function normalizeFsPath(path = '/') {
     p = p.slice(0, -1);
   }
   return p || '/';
+}
+
+const FATFS_MOUNT_PREFIX = '/fatfs';
+
+function toFatfsClientPath(path: string | null | undefined = '/') {
+  const normalized = normalizeFsPath(path);
+  if (normalized === '/') {
+    return FATFS_MOUNT_PREFIX;
+  }
+  return `${FATFS_MOUNT_PREFIX}${normalized}`;
+}
+
+function stripFatfsMountPath(value?: string | null) {
+  if (!value) {
+    return value;
+  }
+  if (value === FATFS_MOUNT_PREFIX) {
+    return '/';
+  }
+  if (value.startsWith(`${FATFS_MOUNT_PREFIX}/`)) {
+    return value.slice(FATFS_MOUNT_PREFIX.length);
+  }
+  return value;
 }
 
 // Estimate LittleFS storage footprint for a single file (data + metadata block).
@@ -733,7 +862,7 @@ function littlefsEstimateFileFootprint(size = 0) {
 }
 
 // Estimate total LittleFS usage for a set of entries.
-function littlefsEstimateUsage(entries) {
+function littlefsEstimateUsage(entries: LittlefsEntry[] | null | undefined) {
   const block = littlefsState.blockSize || 1;
   let total = block * 2; // root metadata copies
   for (const entry of entries || []) {
@@ -747,7 +876,7 @@ function littlefsEstimateUsage(entries) {
 }
 
 // Determine if a path is a direct child of another path.
-function isDirectChildPath(childPath, basePath) {
+function isDirectChildPath(childPath: string | null | undefined, basePath: string | null | undefined) {
   const child = normalizeFsPath(childPath);
   const base = normalizeFsPath(basePath);
   if (base === '/') {
@@ -760,7 +889,7 @@ function isDirectChildPath(childPath, basePath) {
 }
 
 // Join and normalize filesystem paths.
-function joinFsPath(basePath, name) {
+function joinFsPath(basePath: string | null | undefined, name: string | null | undefined) {
   const base = normalizeFsPath(basePath);
   const cleanedName = String(name || '').replace(/\/+/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
   if (!cleanedName) return base;
@@ -768,9 +897,9 @@ function joinFsPath(basePath, name) {
 }
 
 // Lazy-load and cache the FATFS WASM module.
-async function loadFatfsModule() {
+async function loadFatfsModule(): Promise<FatfsWasmModule> {
   if (!fatfsModulePromise) {
-    fatfsModulePromise = import('./wasm/fatfs/index.js').catch(error => {
+    fatfsModulePromise = import('./wasm/fatfs/index.js').catch((error: unknown) => {
       fatfsModulePromise = null;
       throw error;
     });
@@ -779,15 +908,25 @@ async function loadFatfsModule() {
 }
 
 // Normalize LittleFS entry objects and paths into a consistent structure.
-function normalizeLittlefsEntries(entries, basePath = '/') {
+function normalizeLittlefsEntries(entries: unknown, basePath = '/'): LittlefsEntry[] {
   if (!Array.isArray(entries)) {
     return [];
   }
   const base = normalizeFsPath(basePath || '/');
   const baseName = base.split('/').filter(Boolean).pop() || '';
+
+  type RawLittlefsEntry = {
+    path?: unknown;
+    name?: unknown;
+    size?: unknown;
+    isDirectory?: unknown;
+    type?: unknown;
+  };
+
   return entries
     .map(entry => {
-      const rawPath = (entry?.path ?? entry?.name ?? '').toString();
+      const rawEntry = entry as RawLittlefsEntry | null | undefined;
+      const rawPath = String(rawEntry?.path ?? rawEntry?.name ?? '');
       let path = rawPath;
       if (!path.startsWith('/')) {
         const strippedBase = base.replace(/^\//, '');
@@ -809,31 +948,55 @@ function normalizeLittlefsEntries(entries, basePath = '/') {
       }
       const segments = path.split('/').filter(Boolean);
       const name = segments[segments.length - 1] || '';
-      const isDir = entry?.isDirectory === true || entry?.type === 'dir';
+      const isDir = rawEntry?.isDirectory === true || rawEntry?.type === 'dir';
+      const type: LittlefsEntryType = isDir ? 'dir' : 'file';
       return {
         name,
         path,
-        type: isDir ? 'dir' : 'file',
-        size: Number(entry?.size ?? 0) || 0,
+        type,
+        size: Number(rawEntry?.size ?? 0) || 0,
       };
     })
-    .filter(Boolean);
+    .filter((entry): entry is LittlefsEntry => Boolean(entry));
+}
+
+function normalizeFatfsEntries(entries: unknown, basePath = '/'): LittlefsEntry[] {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+  const adjusted = entries.map(entry => {
+    if (entry && typeof entry === 'object') {
+      const rawPath = (entry as Record<string, unknown>).path;
+      if (typeof rawPath === 'string') {
+        return { ...entry, path: stripFatfsMountPath(rawPath) };
+      }
+    }
+    return entry;
+  });
+  return normalizeLittlefsEntries(adjusted, basePath);
 }
 
 // Detect common signatures that indicate an unformatted LittleFS image.
-function isLittlefsUnformattedError(error) {
+function isLittlefsUnformattedError(error: unknown) {
   if (!error) {
     return false;
   }
-  if (typeof error.code === 'number' && error.code === -84) {
-    return true;
+  if (isRecord(error)) {
+    const code = error.code;
+    if (typeof code === 'number' && code === -84) {
+      return true;
+    }
   }
-  const message = String(error?.message ?? '').toLowerCase();
-  return message.includes('failed to initialize littlefs from image') || message.includes('corrupted dir pair');
+  const message = isRecord(error) && typeof error.message === 'string' ? error.message : String(error);
+  const normalizedMessage = message.toLowerCase();
+  return (
+    normalizedMessage.includes('failed to initialize littlefs from image') ||
+    normalizedMessage.includes('corrupted dir pair')
+  );
 }
 
 // Check if a LittleFS image is all 0xFF (blank).
-function isBlankLittlefsImage(image) {
+function isBlankLittlefsImage(image: unknown) {
   if (!(image instanceof Uint8Array) || !image.length) {
     return true;
   }
@@ -856,7 +1019,7 @@ function hasFatfsBackup() {
 }
 
 // Mark the LittleFS state as dirty and optionally set a status message.
-function markLittlefsDirty(message) {
+function markLittlefsDirty(message?: string) {
   littlefsState.dirty = true;
   if (message) {
     littlefsState.status = message;
@@ -864,7 +1027,7 @@ function markLittlefsDirty(message) {
 }
 
 // Mark the FATFS state as dirty and optionally set a status message.
-function markFatfsDirty(message) {
+function markFatfsDirty(message?: string) {
   fatfsState.dirty = true;
   if (message) {
     fatfsState.status = message;
@@ -892,7 +1055,7 @@ async function ensureLittlefsReady(options: EnsureFsOptions = {}) {
 }
 
 // Read LittleFS from flash, initialize the client, and populate state.
-async function loadLittlefsPartition(partition) {
+async function loadLittlefsPartition(partition: FilesystemPartition) {
   if (!loader.value || !partition) {
     littlefsState.error = 'Connect to a device with a LittleFS partition first.';
     return;
@@ -915,7 +1078,7 @@ async function loadLittlefsPartition(partition) {
       label: `LittleFS${littlefsBaudLabel}`,
       cancelSignal: littlefsLoadCancelRequested,
       onProgress: progress => {
-        littlefsLoadingDialog.label = progress.label;
+        littlefsLoadingDialog.label = progress.label ?? littlefsLoadingDialog.label;
         littlefsLoadingDialog.value = progress.value ?? 0;
       },
     });
@@ -1071,16 +1234,18 @@ async function refreshLittlefsListing() {
 }
 
 // Select a LittleFS partition and trigger a load.
-function handleSelectLittlefsPartition(partitionId) {
+function handleSelectLittlefsPartition(partitionId: string | number | null) {
   if (littlefsState.loading || littlefsState.busy || littlefsState.saving) {
     return;
   }
-  littlefsState.selectedId = partitionId;
+  const id = normalizePartitionId(partitionId);
+  littlefsState.selectedId = id;
   littlefsState.client = null;
   littlefsState.files = [];
   littlefsState.currentPath = '/';
   littlefsState.status = 'Loading LittleFS...';
-  const partition = littleFsPartitions.value.find(entry => entry.id === partitionId) ?? littleFsPartitions.value[0];
+  const partition =
+    (id != null ? littleFsPartitions.value.find(entry => entry.id === id) : null) ?? littleFsPartitions.value[0];
   if (partition) {
     void loadLittlefsPartition(partition);
   }
@@ -1115,8 +1280,8 @@ async function handleLittlefsBackup() {
     const stampedName = `${safeBase}_${formatBackupTimestamp()}.bin`;
     const cachedImage =
       littlefsState.lastReadImage &&
-      littlefsState.lastReadOffset === partition.offset &&
-      littlefsState.lastReadSize === partition.size
+        littlefsState.lastReadOffset === partition.offset &&
+        littlefsState.lastReadSize === partition.size
         ? littlefsState.lastReadImage
         : null;
     if (cachedImage) {
@@ -1173,7 +1338,7 @@ function cancelLittlefsLoad() {
 }
 
 // Restore a LittleFS image to the selected partition.
-async function handleLittlefsRestore(file) {
+async function handleLittlefsRestore(file: File | null) {
   const partition = littlefsSelectedPartition.value;
   if (!partition) return;
   if (!file) return;
@@ -1182,9 +1347,10 @@ async function handleLittlefsRestore(file) {
     littlefsState.status = `Restore file must be exactly ${formatBytes(partition.size) ?? `${partition.size} bytes`}.`;
     return;
   }
+  const fileLabel = file.name ? `"${file.name}"` : 'the selected image';
   const confirmed = await showConfirmation({
     title: 'Restore LittleFS Partition',
-    message: 'This will overwrite the entire LittleFS partition with the selected image. Continue?',
+    message: `This will overwrite the entire LittleFS partition with ${fileLabel}. Continue?`,
     confirmText: 'Restore',
     destructive: true,
   });
@@ -1222,7 +1388,7 @@ async function handleLittlefsRestore(file) {
 }
 
 // Validate a selected file before queueing a LittleFS upload.
-function handleLittlefsUploadSelection(file) {
+function handleLittlefsUploadSelection(file: File | null) {
   if (!file || !littlefsState.client) {
     littlefsState.uploadBlocked = false;
     littlefsState.uploadBlockedReason = '';
@@ -1230,16 +1396,23 @@ function handleLittlefsUploadSelection(file) {
   }
   const targetPath = joinFsPath(littlefsState.currentPath || '/', file.name);
   const partition = littlefsSelectedPartition.value;
-  const partitionSize = partition?.size ?? littlefsState.blockSize * littlefsState.blockCount;
+  updateLittlefsUsage(partition);
+  const partitionSize =
+    littlefsState.usage?.capacityBytes ?? partition?.size ?? littlefsState.blockSize * littlefsState.blockCount;
   const usageSource = littlefsState.allFiles?.length ? littlefsState.allFiles : littlefsState.files;
-  const usedBytes = littlefsEstimateUsage(usageSource);
+  const usedBytes = littlefsState.usage?.usedBytes ?? littlefsEstimateUsage(usageSource);
   const existingEntry = usageSource.find(entry => entry.path === targetPath);
   const existingFootprint =
     existingEntry?.type === 'dir'
       ? littlefsState.blockSize || existingEntry?.size || 0
       : littlefsEstimateFileFootprint(existingEntry?.size ?? 0);
   const incomingFootprint = littlefsEstimateFileFootprint(file.size);
-  const availableBytes = partitionSize ? partitionSize - usedBytes + existingFootprint : 0;
+  const availableBytes =
+    partitionSize && typeof littlefsState.usage?.freeBytes === 'number'
+      ? littlefsState.usage.freeBytes + existingFootprint
+      : partitionSize
+        ? partitionSize - usedBytes + existingFootprint
+        : 0;
   if (partitionSize && incomingFootprint > availableBytes) {
     const message =
       'Not enough LittleFS space for this file. Delete files or format the partition, then try again.';
@@ -1255,15 +1428,15 @@ function handleLittlefsUploadSelection(file) {
 }
 
 // Queue a LittleFS upload while serializing concurrent writes.
-async function handleLittlefsUpload(payload) {
+async function handleLittlefsUpload(payload: LittlefsUploadPayload) {
   // serialize uploads to avoid parallel free-space races
   littlefsUploadQueue = littlefsUploadQueue.then(() => performLittlefsUpload(payload));
   return littlefsUploadQueue;
 }
 
 // Perform a LittleFS upload or folder creation with size and conflict checks.
-async function performLittlefsUpload(payload) {
-  const { file, path, isDir } = payload || {};
+async function performLittlefsUpload(payload: LittlefsUploadPayload) {
+  const { file, path, isDir } = payload;
   if (littlefsState.uploadBlocked) {
     console.warn('[ESPConnect-LittleFS] upload skipped because blocked', {
       path,
@@ -1285,12 +1458,17 @@ async function performLittlefsUpload(payload) {
     return;
   }
   const partition = littlefsSelectedPartition.value;
-  const partitionSize = partition?.size ?? littlefsState.blockSize * littlefsState.blockCount;
+  updateLittlefsUsage(partition);
+  const partitionSize =
+    littlefsState.usage?.capacityBytes ?? partition?.size ?? littlefsState.blockSize * littlefsState.blockCount;
   const usageSource = littlefsState.allFiles?.length ? littlefsState.allFiles : littlefsState.files;
-  const usedBytes = littlefsEstimateUsage(usageSource);
+  const usedBytes = littlefsState.usage?.usedBytes ?? littlefsEstimateUsage(usageSource);
   let workingFreeBytes =
-    littlefsState.usage?.freeBytes ??
-    (partitionSize ? Math.max(partitionSize - usedBytes, 0) : Number.POSITIVE_INFINITY);
+    typeof littlefsState.usage?.freeBytes === 'number'
+      ? littlefsState.usage.freeBytes
+      : partitionSize
+        ? Math.max(partitionSize - usedBytes, 0)
+        : Number.POSITIVE_INFINITY;
   const derivedIsDir = isDir === true || (!file && !!path);
   if (derivedIsDir && !file && path) {
     const targetDir = joinFsPath(littlefsState.currentPath || '/', path);
@@ -1394,7 +1572,15 @@ async function performLittlefsUpload(payload) {
       error,
     });
     const msg = formatErrorMessage(error);
-    const spaceError = msg.toLowerCase().includes('no more free space') || msg.toLowerCase().includes('unable to add file');
+    const code = isRecord(error) && typeof error.code === 'number' ? error.code : null;
+    const normalized = msg.toLowerCase();
+    const spaceError =
+      code === -28 ||
+      normalized.includes('no space') ||
+      normalized.includes('no more free space') ||
+      normalized.includes('unable to add file') ||
+      normalized.includes('nospace') ||
+      normalized.includes('enospc');
     if (spaceError) {
       littlefsState.uploadBlocked = true;
       littlefsState.uploadBlockedReason = msg;
@@ -1427,7 +1613,7 @@ function handleLittlefsResetUploadBlock() {
 }
 
 // Delete a LittleFS file or directory after confirmation.
-async function handleLittlefsDelete(path) {
+async function handleLittlefsDelete(path: string) {
   if (!littlefsState.client || littlefsState.readOnly) {
     return;
   }
@@ -1463,7 +1649,7 @@ async function handleLittlefsDelete(path) {
 }
 
 // Navigate to a specific path within LittleFS.
-async function handleLittlefsNavigate(path) {
+async function handleLittlefsNavigate(path: string) {
   const target = normalizeFsPath(path || '/');
   if (littlefsState.currentPath === target || !littlefsState.client) return;
   littlefsState.currentPath = target;
@@ -1613,7 +1799,7 @@ async function handleLittlefsSave() {
 }
 
 // Read a LittleFS file and return its raw bytes.
-async function readLittlefsFile(path) {
+async function readLittlefsFile(path: string) {
   if (!littlefsState.client) {
     throw new Error('LittleFS client unavailable.');
   }
@@ -1638,7 +1824,7 @@ async function readLittlefsFile(path) {
 }
 
 // Download a LittleFS file to the host.
-async function handleLittlefsDownloadFile(path) {
+async function handleLittlefsDownloadFile(path: string) {
   if (!littlefsState.client || !path) return;
   try {
     const data = await readLittlefsFile(path);
@@ -1652,7 +1838,7 @@ async function handleLittlefsDownloadFile(path) {
 }
 
 // Preview a LittleFS file using the SPIFFS viewer dialog.
-async function handleLittlefsView(path) {
+async function handleLittlefsView(path: string) {
   if (!littlefsState.client) return;
   const name = path.split('/').filter(Boolean).pop() || path;
   const viewInfo = resolveSpiffsViewInfo(name);
@@ -1714,7 +1900,7 @@ async function ensureFatfsReady(options: EnsureFsOptions = {}) {
 }
 
 // Read a FATFS partition image, build the client, and populate state.
-async function loadFatfsPartition(partition) {
+async function loadFatfsPartition(partition: FilesystemPartition) {
   if (!loader.value || !partition) {
     fatfsState.error = 'Connect to a device with a FATFS partition first.';
     return;
@@ -1736,7 +1922,7 @@ async function loadFatfsPartition(partition) {
       label: `${partition.label || 'FATFS'}${baudLabel}`,
       cancelSignal: fatfsLoadCancelRequested,
       onProgress: progress => {
-        fatfsLoadingDialog.label = progress.label;
+        fatfsLoadingDialog.label = progress.label ?? fatfsLoadingDialog.label;
         fatfsLoadingDialog.value = progress.value ?? 0;
       },
     });
@@ -1766,8 +1952,7 @@ async function loadFatfsPartition(partition) {
         blockCount,
       });
     } catch (error) {
-      const createFatFS =
-        typeof module.createFatFS === 'function' ? module.createFatFS : module.default?.createFatFS;
+      const createFatFS = typeof module.createFatFS === 'function' ? module.createFatFS : null;
       if (createFatFS) {
         client = await createFatFS({
           blockSize,
@@ -1782,8 +1967,8 @@ async function loadFatfsPartition(partition) {
       }
     }
     fatfsState.client = client;
-    const entries = client.list?.() ?? [];
-    fatfsState.files = normalizeLittlefsEntries(entries);
+    fatfsState.currentPath = '/';
+    await refreshFatfsListing();
     fatfsState.baselineFiles = fatfsState.files.map(file => ({ ...file }));
     fatfsState.dirty = false;
     fatfsState.backupDone = false;
@@ -1828,26 +2013,41 @@ async function loadFatfsPartition(partition) {
   }
 }
 
-// Refresh the FATFS file listing and usage.
+// Refresh the FATFS file listing and usage for the current path.
 async function refreshFatfsListing() {
   if (!fatfsState.client) {
     return;
   }
-  const entries = fatfsState.client.list?.() ?? [];
-  fatfsState.files = normalizeLittlefsEntries(entries);
+  const rootEntries = fatfsState.client.list?.(FATFS_MOUNT_PREFIX) ?? [];
+  fatfsState.allFiles = normalizeFatfsEntries(rootEntries, '/');
+  const clientPath = toFatfsClientPath(fatfsState.currentPath || '/');
+  const entries = fatfsState.client.list?.(clientPath) ?? [];
+  fatfsState.files = normalizeFatfsEntries(entries, fatfsState.currentPath);
+  try {
+    console.info(
+      '[ESPConnect-FATFS] entries @',
+      fatfsState.currentPath,
+      fatfsState.files.map(entry => `${entry.type === 'dir' ? 'dir ' : 'file'} ${entry.path}`),
+    );
+  } catch {
+    // ignore console errors
+  }
   updateFatfsUsage();
 }
 
 // Select a FATFS partition and trigger a load.
-function handleSelectFatfsPartition(partitionId) {
+function handleSelectFatfsPartition(partitionId: string | number | null) {
   if (fatfsState.loading || fatfsState.busy || fatfsState.saving) {
     return;
   }
-  fatfsState.selectedId = partitionId;
+  const id = normalizePartitionId(partitionId);
+  fatfsState.selectedId = id;
   fatfsState.client = null;
   fatfsState.files = [];
+  fatfsState.currentPath = '/';
   fatfsState.status = 'Loading FATFS...';
-  const partition = fatfsPartitions.value.find(entry => entry.id === partitionId) ?? fatfsPartitions.value[0];
+  const partition =
+    (id != null ? fatfsPartitions.value.find(entry => entry.id === id) : null) ?? fatfsPartitions.value[0];
   if (partition) {
     void loadFatfsPartition(partition);
   }
@@ -1882,8 +2082,8 @@ async function handleFatfsBackup() {
     const stampedName = `${safeBase}_${formatBackupTimestamp()}.bin`;
     const cachedImage =
       fatfsState.lastReadImage &&
-      fatfsState.lastReadOffset === partition.offset &&
-      fatfsState.lastReadSize === partition.size
+        fatfsState.lastReadOffset === partition.offset &&
+        fatfsState.lastReadSize === partition.size
         ? fatfsState.lastReadImage
         : null;
     if (cachedImage) {
@@ -1940,7 +2140,7 @@ function cancelFatfsLoad() {
 }
 
 // Restore a FATFS image to the selected partition.
-async function handleFatfsRestore(file) {
+async function handleFatfsRestore(file: File | null) {
   const partition = fatfsSelectedPartition.value;
   if (!partition) return;
   if (!file) return;
@@ -1949,9 +2149,10 @@ async function handleFatfsRestore(file) {
     fatfsState.status = `Restore file must be exactly ${formatBytes(partition.size) ?? `${partition.size} bytes`}.`;
     return;
   }
+  const fileLabel = file.name ? `"${file.name}"` : 'the selected image';
   const confirmed = await showConfirmation({
     title: 'Restore FATFS Partition',
-    message: 'This will overwrite the entire FATFS partition with the selected image. Continue?',
+    message: `This will overwrite the entire FATFS partition with ${fileLabel}. Continue?`,
     confirmText: 'Restore',
     destructive: true,
   });
@@ -1989,18 +2190,28 @@ async function handleFatfsRestore(file) {
 }
 
 // Validate a selected file before queueing a FATFS upload.
-function handleFatfsUploadSelection(file) {
+function handleFatfsUploadSelection(file: File | null) {
   if (!file || !fatfsState.client) {
     fatfsState.uploadBlocked = false;
     fatfsState.uploadBlockedReason = '';
     return;
   }
   const partition = fatfsSelectedPartition.value;
+  updateFatfsUsage(partition);
+  const targetPath = joinFsPath(fatfsState.currentPath || '/', file.name);
+  const usageSource = fatfsState.allFiles?.length ? fatfsState.allFiles : fatfsState.files;
+  const existingEntry = usageSource.find(entry => entry.path === targetPath);
+  const existingSize = existingEntry?.size ?? 0;
   const partitionSize = partition?.size ?? fatfsState.blockSize * fatfsState.blockCount;
-  const usedBytes = fatfsState.files.reduce((sum, entry) => sum + (entry.size ?? 0), 0);
-  const existingSize = fatfsState.files.find(entry => entry.name === file.name)?.size ?? 0;
-  const availableBytes = partitionSize ? partitionSize - usedBytes + existingSize : 0;
-  if (partitionSize && file.size > availableBytes) {
+  const usedBytes = usageSource.reduce((sum, entry) => sum + (entry.size ?? 0), 0);
+  const freeBytes =
+    typeof fatfsState.usage?.freeBytes === 'number'
+      ? fatfsState.usage.freeBytes
+      : partitionSize
+        ? Math.max(partitionSize - usedBytes, 0)
+        : Number.POSITIVE_INFINITY;
+  const availableBytes = Number.isFinite(freeBytes) ? Math.max(freeBytes + existingSize, 0) : Number.POSITIVE_INFINITY;
+  if (partitionSize && Number.isFinite(availableBytes) && file.size > availableBytes) {
     const message =
       'Not enough FATFS space for this file. Delete files or format the partition, then try again.';
     fatfsState.uploadBlocked = true;
@@ -2014,8 +2225,15 @@ function handleFatfsUploadSelection(file) {
   fatfsState.uploadBlockedReason = '';
 }
 
-// Upload a file to FATFS with size checks and staging.
-async function handleFatfsUpload({ file }) {
+// Queue a FATFS upload to avoid parallel writes.
+function handleFatfsUpload(payload: LittlefsUploadPayload) {
+  fatfsUploadQueue = fatfsUploadQueue.then(() => performFatfsUpload(payload));
+  return fatfsUploadQueue;
+}
+
+// Perform a FATFS upload or folder creation with directory support.
+async function performFatfsUpload(payload: LittlefsUploadPayload) {
+  const { file, path = '', isDir } = payload;
   if (!fatfsState.client) return;
   if (fatfsState.readOnly) {
     fatfsState.status = fatfsState.readOnlyReason || 'FATFS is read-only.';
@@ -2029,9 +2247,11 @@ async function handleFatfsUpload({ file }) {
     }
     return;
   }
+  const derivedIsDir = isDir === true || (!file && !!path);
   if (!file) {
-    fatfsState.status = 'Select a file to upload.';
-    showToast(fatfsState.status, { color: 'info' });
+    if (derivedIsDir && path) {
+      await handleFatfsNewFolder(path);
+    }
     return;
   }
   const targetName = (file.name || '').trim();
@@ -2040,29 +2260,91 @@ async function handleFatfsUpload({ file }) {
     showToast(fatfsState.status, { color: 'warning' });
     return;
   }
+  const relativePath = path || targetName;
+  const target = joinFsPath(fatfsState.currentPath || '/', relativePath);
+  updateFatfsUsage(fatfsSelectedPartition.value);
+  const usageSource = fatfsState.allFiles?.length ? fatfsState.allFiles : fatfsState.files;
+  const existingEntry = usageSource.find(entry => entry.path === target);
+  const existingSize = existingEntry?.size ?? 0;
+  const capacityBytes =
+    fatfsState.usage?.capacityBytes ?? fatfsSelectedPartition.value?.size ?? fatfsState.blockSize * fatfsState.blockCount;
+  const freeBytes =
+    typeof fatfsState.usage?.freeBytes === 'number'
+      ? fatfsState.usage.freeBytes
+      : Number.isFinite(capacityBytes)
+        ? Math.max(capacityBytes - usageSource.reduce((sum, entry) => sum + (entry.size ?? 0), 0), 0)
+        : Number.POSITIVE_INFINITY;
+  const availableBytes = Number.isFinite(freeBytes) ? Math.max(freeBytes + existingSize, 0) : Number.POSITIVE_INFINITY;
+  if (Number.isFinite(capacityBytes) && Number.isFinite(availableBytes) && file.size > availableBytes) {
+    const message =
+      'Not enough FATFS space for this upload. Delete files or format the partition, then try again.';
+    fatfsState.uploadBlocked = true;
+    fatfsState.uploadBlockedReason = message;
+    fatfsState.status = message;
+    showUploadError(message);
+    return;
+  }
+
   try {
     fatfsState.busy = true;
     const data = new Uint8Array(await file.arrayBuffer());
-    fatfsState.client.writeFile(targetName, data);
+    const segments = target.split('/').filter(Boolean);
+    let built = '';
+    if (segments.length > 1 && typeof fatfsState.client.mkdir === 'function') {
+      for (let i = 0; i < segments.length - 1; i++) {
+        built += `/${segments[i]}`;
+        try {
+          fatfsState.client.mkdir(toFatfsClientPath(built));
+        } catch {
+          // ignore if already exists
+        }
+      }
+    }
+    const clientPath = toFatfsClientPath(target);
+    fatfsState.client.writeFile(clientPath, data);
     await refreshFatfsListing();
-    markFatfsDirty(`Staged ${targetName}. Remember to Save.`);
-    appendLog(`FATFS staged ${targetName} (${data.length.toLocaleString()} bytes).`, '[ESPConnect-Debug]');
+    markFatfsDirty(`Staged ${target}. Remember to Save.`);
+    appendLog(`FATFS staged ${target} (${data.length.toLocaleString()} bytes).`, '[ESPConnect-Debug]');
   } catch (error) {
-    fatfsState.error = formatErrorMessage(error);
-    showToast(fatfsState.error, { color: 'error' });
+    const msg = formatErrorMessage(error);
+    const code = isRecord(error) && typeof error.code === 'number' ? error.code : null;
+    const normalized = msg.toLowerCase();
+    const spaceError =
+      normalized.includes('no space') ||
+      normalized.includes('nospace') ||
+      normalized.includes('enospc');
+    if (spaceError) {
+      fatfsState.uploadBlocked = true;
+      fatfsState.uploadBlockedReason = msg;
+      fatfsState.status = msg;
+      showUploadError(msg);
+      try {
+        fatfsState.client.deleteFile(toFatfsClientPath(target));
+      } catch {
+        // ignore cleanup issues
+      }
+      await refreshFatfsListing();
+    } else {
+      fatfsState.error = msg;
+      showToast(msg, { color: 'error' });
+    }
   } finally {
     fatfsState.busy = false;
   }
 }
 
-// Delete a FATFS file after confirmation.
-async function handleFatfsDelete(name) {
+// Delete a FATFS file or directory after confirmation.
+async function handleFatfsDelete(path: string) {
   if (!fatfsState.client || fatfsState.readOnly) {
     return;
   }
+  const targetPath = normalizeFsPath(path);
+  const entries = fatfsState.allFiles?.length ? fatfsState.allFiles : fatfsState.files;
+  const entry = entries.find(f => normalizeFsPath(f.path) === targetPath);
+  const isDir = entry?.type === 'dir';
   const confirmed = await showConfirmation({
-    title: 'Delete File',
-    message: `Delete ${name} from FATFS? This cannot be undone.`,
+    title: isDir ? 'Delete Folder' : 'Delete File',
+    message: `Delete ${targetPath} from FATFS? This cannot be undone.`,
     confirmText: 'Delete',
     destructive: true,
   });
@@ -2071,15 +2353,101 @@ async function handleFatfsDelete(name) {
   }
   try {
     fatfsState.busy = true;
-    fatfsState.client.deleteFile(name);
+    await removeFatfsEntry(targetPath);
     await refreshFatfsListing();
-    markFatfsDirty(`${name} deleted. Save to persist.`);
-    appendLog(`FATFS staged deletion of ${name}.`, '[ESPConnect-Debug]');
+    markFatfsDirty(`${targetPath} deleted. Save to persist.`);
+    appendLog(`FATFS staged deletion of ${targetPath}.`, '[ESPConnect-Debug]');
   } catch (error) {
     fatfsState.error = formatErrorMessage(error);
   } finally {
     fatfsState.busy = false;
   }
+}
+
+// Recursively delete a FATFS entry and its children.
+async function removeFatfsEntry(targetPath: string) {
+  if (!fatfsState.client) {
+    return;
+  }
+  const clientPath = toFatfsClientPath(targetPath);
+  let children: LittlefsEntry[] = [];
+  try {
+    const rawEntries = fatfsState.client.list?.(clientPath) ?? [];
+    children = normalizeFatfsEntries(rawEntries, targetPath);
+  } catch {
+    children = [];
+  }
+  for (const child of children) {
+    if (child.type === 'dir') {
+      await removeFatfsEntry(child.path);
+    } else {
+      fatfsState.client.deleteFile(toFatfsClientPath(child.path));
+    }
+  }
+  fatfsState.client.deleteFile(clientPath);
+}
+
+// Navigate to a specific path within FATFS.
+async function handleFatfsNavigate(path: string) {
+  const target = normalizeFsPath(path || '/');
+  if (fatfsState.currentPath === target || !fatfsState.client) return;
+  fatfsState.currentPath = target;
+  await refreshFatfsListing();
+}
+
+// Navigate one directory up within FATFS.
+async function handleFatfsNavigateUp() {
+  const current = normalizeFsPath(fatfsState.currentPath || '/');
+  if (current === '/') return;
+  const segments = current.split('/').filter(Boolean);
+  segments.pop();
+  const parent = segments.length ? `/${segments.join('/')}` : '/';
+  await handleFatfsNavigate(parent);
+}
+
+// Create a new folder in FATFS.
+async function handleFatfsNewFolder(name?: string) {
+  if (!fatfsState.client || fatfsState.readOnly) {
+    return;
+  }
+  const folderName = (name || prompt('New folder name'))?.toString().trim();
+  if (!folderName) return;
+  if (folderName.includes('/') || folderName.includes('..')) {
+    const msg = 'Folder name cannot contain slashes or "..".';
+    showToast(msg, { color: 'warning' });
+    fatfsState.status = msg;
+    return;
+  }
+  const targetPath = joinFsPath(fatfsState.currentPath || '/', folderName);
+  const exists = (fatfsState.allFiles?.length ? fatfsState.allFiles : fatfsState.files).find(
+    entry => entry.path === targetPath && entry.type === 'dir',
+  );
+  if (exists) {
+    const msg = `Folder "${folderName}" already exists here.`;
+    showToast(msg, { color: 'warning' });
+    fatfsState.status = msg;
+    return;
+  }
+  try {
+    fatfsState.busy = true;
+    if (typeof fatfsState.client.mkdir === 'function') {
+      fatfsState.client.mkdir(toFatfsClientPath(targetPath));
+      await refreshFatfsListing();
+      markFatfsDirty(`Created folder ${targetPath}. Save to persist.`);
+    } else {
+      showToast('mkdir is not available in the FATFS client.', { color: 'error' });
+    }
+  } catch (error) {
+    fatfsState.error = formatErrorMessage(error);
+  } finally {
+    fatfsState.busy = false;
+  }
+}
+
+// Reset any upload block state for FATFS.
+function handleFatfsResetUploadBlock() {
+  fatfsState.uploadBlocked = false;
+  fatfsState.uploadBlockedReason = '';
 }
 
 // Format the FATFS image and mark changes as staged.
@@ -2179,11 +2547,11 @@ async function handleFatfsSave() {
 }
 
 // Read a FATFS file and return its raw bytes.
-async function readFatfsFile(name) {
+async function readFatfsFile(targetPath: string) {
   if (!fatfsState.client) {
     throw new Error('FATFS client unavailable.');
   }
-  if (!name) {
+  if (!targetPath) {
     throw new Error('File name is required.');
   }
   const reader =
@@ -2195,7 +2563,9 @@ async function readFatfsFile(name) {
   if (!reader) {
     throw new Error('FATFS module does not support per-file reads. Update the WASM bundle.');
   }
-  const result = reader.call(fatfsState.client, name);
+  const normalized = normalizeFsPath(targetPath || '/');
+  const clientPath = toFatfsClientPath(normalized);
+  const result = reader.call(fatfsState.client, clientPath);
   const data = result instanceof Promise ? await result : result;
   if (!(data instanceof Uint8Array)) {
     throw new Error('FATFS read returned unexpected data.');
@@ -2204,12 +2574,16 @@ async function readFatfsFile(name) {
 }
 
 // Download a FATFS file to the host.
-async function handleFatfsDownloadFile(name) {
-  if (!fatfsState.client || !name) return;
+async function handleFatfsDownloadFile(path: string) {
+  if (!fatfsState.client || !path) return;
   try {
-    const data = await readFatfsFile(name);
-    saveBinaryFile(name, data);
-    appendLog(`FATFS downloaded ${name} (${data.length.toLocaleString()} bytes).`, '[ESPConnect-Debug]');
+    const data = await readFatfsFile(path);
+    const fileName = path.split('/').filter(Boolean).pop() || 'fatfs-file';
+    saveBinaryFile(fileName, data);
+    appendLog(
+      `FATFS downloaded ${path} (${data.length.toLocaleString()} bytes).`,
+      '[ESPConnect-Debug]',
+    );
   } catch (error) {
     fatfsState.error = formatErrorMessage(error);
     fatfsState.status = 'FATFS download failed.';
@@ -2217,9 +2591,10 @@ async function handleFatfsDownloadFile(name) {
 }
 
 // Preview a FATFS file using the SPIFFS viewer dialog.
-async function handleFatfsView(name) {
+async function handleFatfsView(path: string) {
   if (!fatfsState.client) return;
-  const viewInfo = resolveSpiffsViewInfo(name);
+  const fileName = path.split('/').filter(Boolean).pop() || path;
+  const viewInfo = resolveSpiffsViewInfo(fileName);
   if (!viewInfo) {
     fatfsState.status = 'This file type cannot be previewed. Download it instead.';
     showToast(fatfsState.status, { color: 'info' });
@@ -2227,14 +2602,14 @@ async function handleFatfsView(name) {
   }
   resetViewerMedia();
   spiffsViewerDialog.visible = true;
-  spiffsViewerDialog.name = name;
+  spiffsViewerDialog.name = path;
   spiffsViewerDialog.loading = true;
   spiffsViewerDialog.error = null;
   spiffsViewerDialog.content = '';
   spiffsViewerDialog.mode = viewInfo.mode;
   spiffsViewerDialog.source = 'fatfs';
   try {
-    const data = await readFatfsFile(name);
+    const data = await readFatfsFile(path);
     if (data.length > SPIFFS_VIEWER_MAX_BYTES) {
       throw new Error(
         `File too large to preview (limit ${formatBytes(SPIFFS_VIEWER_MAX_BYTES) ?? SPIFFS_VIEWER_MAX_BYTES} bytes).`,
@@ -2258,21 +2633,27 @@ async function handleFatfsView(name) {
 }
 
 // Group device facts into configured sections with a catch-all for leftovers.
-function buildFactGroups(facts) {
-  const groups = [];
-  const assigned = new Set();
+function buildFactGroups(facts: DeviceFact[]): DeviceFactGroup[] {
+  const groups: DeviceFactGroup[] = [];
+  const assigned = new Set<string>();
 
   for (const config of FACT_GROUP_CONFIG) {
+    const labelMap = new Map(config.labels.map(entry => [entry.label, entry.key]));
     const items = facts.filter(fact => {
       if (assigned.has(fact.label)) return false;
-      return config.labels.includes(fact.label);
+      return labelMap.has(fact.label);
     });
     if (items.length) {
       items.forEach(item => assigned.add(item.label));
+      const enhancedItems = items.map(fact => ({
+        ...fact,
+        translationKey: fact.translationKey ?? labelMap.get(fact.label),
+      }));
       groups.push({
         title: config.title,
+        titleKey: config.titleKey,
         icon: config.icon,
-        items,
+        items: enhancedItems,
       });
     }
   }
@@ -2290,8 +2671,8 @@ function buildFactGroups(facts) {
 }
 
 // Human-friendly byte formatter with units.
-function formatBytes(bytes) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return null;
+function formatBytes(bytes: number | null | undefined): string | null {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) return null;
   const units = ['bytes', 'KB', 'MB', 'GB'];
   let idx = 0;
   let value = bytes;
@@ -2304,8 +2685,8 @@ function formatBytes(bytes) {
 }
 
 // Normalize different error shapes to a readable message.
-function formatErrorMessage(error) {
-  if (!error) {
+function formatErrorMessage(error: unknown): string {
+  if (error == null) {
     return 'Unknown error';
   }
   if (typeof error === 'string') {
@@ -2314,13 +2695,14 @@ function formatErrorMessage(error) {
   if (error instanceof Error) {
     return error.message || String(error);
   }
-  if (typeof error === 'object') {
-    if (error?.message) {
-      return error.message;
+  if (isRecord(error)) {
+    const message = error.message;
+    if (typeof message === 'string' && message) {
+      return message;
     }
     try {
       return JSON.stringify(error);
-    } catch (serializationError) {
+    } catch {
       return String(error);
     }
   }
@@ -2328,14 +2710,13 @@ function formatErrorMessage(error) {
 }
 
 // Convert vendor codes into human-readable labels.
-function formatVendorLabel(label) {
+function formatVendorLabel(label: string | null | undefined) {
   if (!label) return label;
   return VENDOR_ALIASES[label] ?? label.replace(/_/g, ' ');
 }
 
 // Expand feature codes with vendor-friendly names.
-function humanizeFeature(feature) {
-  if (typeof feature !== 'string') return feature;
+function humanizeFeature(feature: string) {
   let text = feature;
   for (const [code, friendly] of Object.entries(VENDOR_ALIASES)) {
     text = text.replace(new RegExp(code, 'g'), friendly);
@@ -2344,7 +2725,7 @@ function humanizeFeature(feature) {
 }
 
 // Build a user-facing USB bridge label from IDs.
-function formatUsbBridge(info) {
+function formatUsbBridge(info: SerialPortInfo | null | undefined): string | null {
   if (!info || typeof info.usbVendorId !== 'number') return null;
   const vendorHex = `0x${info.usbVendorId.toString(16).padStart(4, '0').toUpperCase()}`;
   const productHex =
@@ -2373,7 +2754,7 @@ function formatUsbBridge(info) {
 }
 
 // Trigger a binary download on the host.
-function saveBinaryFile(name, data) {
+function saveBinaryFile(name: string, data: Uint8Array) {
   if (!data) return;
   const safeName = sanitizeFileName(name, 'download');
   const blob = new Blob([toArrayBuffer(data)], { type: 'application/octet-stream' });
@@ -2411,27 +2792,32 @@ function resetSpiffsState() {
   spiffsState.sessionBackupDone = false;
   spiffsState.diagnostics = [];
   spiffsState.baselineFiles = [];
-  spiffsState.usage = {
-    capacityBytes: 0,
-    usedBytes: 0,
-    freeBytes: 0,
-  };
+  spiffsState.usage = getDefaultSpiffsUsage();
   closeSpiffsViewer();
   spiffsState.uploadBlocked = false;
   spiffsState.uploadBlockedReason = '';
 }
 
+function getDefaultSpiffsUsage() {
+  return {
+    capacityBytes: 0,
+    usedBytes: 0,
+    freeBytes: 0,
+  };
+}
+
 // Update SPIFFS usage info if provided by the client.
-function updateSpiffsUsage() {
+async function updateSpiffsUsage() {
   if (spiffsState.client && typeof spiffsState.client.getUsage === 'function') {
-    spiffsState.usage = spiffsState.client.getUsage();
-  } else {
-    spiffsState.usage = {
-      capacityBytes: 0,
-      usedBytes: 0,
-      freeBytes: 0,
-    };
+    try {
+      const usage = await spiffsState.client.getUsage();
+      spiffsState.usage = usage ?? getDefaultSpiffsUsage();
+      return;
+    } catch (error) {
+      console.error('[ESPConnect] Failed to read SPIFFS usage', error);
+    }
   }
+  spiffsState.usage = getDefaultSpiffsUsage();
 }
 
 // Reset LittleFS state to initial defaults.
@@ -2473,18 +2859,22 @@ function resetLittlefsState() {
 
 // Calculate LittleFS usage based on current entries.
 function updateLittlefsUsage(partition = littlefsSelectedPartition.value) {
-  const partitionSize = partition?.size ?? 0;
-  const capacityBytes =
-    littlefsState.blockSize && littlefsState.blockCount
-      ? littlefsState.blockSize * littlefsState.blockCount
-      : partitionSize;
-  const source = littlefsState.allFiles?.length ? littlefsState.allFiles : littlefsState.files;
-  const usedBytes = littlefsEstimateUsage(source);
-  littlefsState.usage = {
-    capacityBytes,
-    usedBytes,
-    freeBytes: Math.max(capacityBytes - usedBytes, 0),
-  };
+  if (littlefsState.client && typeof littlefsState.client.getUsage === 'function') {
+    littlefsState.usage = littlefsState.client.getUsage();
+  } else {
+    const partitionSize = partition?.size ?? 0;
+    const capacityBytes =
+      littlefsState.blockSize && littlefsState.blockCount
+        ? littlefsState.blockSize * littlefsState.blockCount
+        : partitionSize;
+    const source = littlefsState.allFiles?.length ? littlefsState.allFiles : littlefsState.files;
+    const usedBytes = littlefsEstimateUsage(source);
+    littlefsState.usage = {
+      capacityBytes,
+      usedBytes,
+      freeBytes: Math.max(capacityBytes - usedBytes, 0),
+    };
+  }
   // Update disk version from client if available
   if (littlefsState.client?.getDiskVersion) {
     littlefsState.diskVersion = littlefsState.client.getDiskVersion();
@@ -2499,6 +2889,8 @@ function resetFatfsState() {
   fatfsState.lastReadImage = null;
   fatfsState.client = null;
   fatfsState.files = [];
+  fatfsState.allFiles = [];
+  fatfsState.currentPath = '/';
   fatfsState.status = 'Load a FATFS partition to begin.';
   fatfsState.loading = false;
   fatfsState.busy = false;
@@ -2522,12 +2914,25 @@ function resetFatfsState() {
   fatfsState.blockCount = 0;
 }
 
+function resetNvsState() {
+  nvsState.selectedId = null;
+  nvsState.status = 'Select an NVS partition to begin.';
+  nvsState.loading = false;
+  nvsState.error = null;
+  nvsState.result = null;
+}
+
 // Calculate FATFS usage based on current entries.
 function updateFatfsUsage(partition = fatfsSelectedPartition.value) {
+  if (fatfsState.client && typeof fatfsState.client.getUsage === 'function') {
+    fatfsState.usage = fatfsState.client.getUsage();
+    return;
+  }
   const partitionSize = partition?.size ?? fatfsState.blockSize * fatfsState.blockCount;
   const capacityBytes =
     fatfsState.blockSize && fatfsState.blockCount ? fatfsState.blockSize * fatfsState.blockCount : partitionSize;
-  const usedBytes = fatfsState.files.reduce((sum, file) => sum + (file.size ?? 0), 0);
+  const source = fatfsState.allFiles?.length ? fatfsState.allFiles : fatfsState.files;
+  const usedBytes = source.reduce((sum, file) => sum + (file.size ?? 0), 0);
   fatfsState.usage = {
     capacityBytes,
     usedBytes,
@@ -2536,7 +2941,7 @@ function updateFatfsUsage(partition = fatfsSelectedPartition.value) {
 }
 
 // Resolve how to preview a SPIFFS/LittleFS/FATFS file by extension.
-function resolveSpiffsViewInfo(name = '') {
+function resolveSpiffsViewInfo(name = ''): FilePreviewInfo | null {
   if (!name) return null;
   const dotIndex = name.lastIndexOf('.');
   if (dotIndex === -1) return null;
@@ -2590,7 +2995,7 @@ async function ensureSpiffsReady(options: EnsureFsOptions = {}) {
 }
 
 // Read SPIFFS from flash, build the client, and populate state.
-async function loadSpiffsPartition(partition) {
+async function loadSpiffsPartition(partition: FilesystemPartition) {
   if (!loader.value || !partition) {
     spiffsState.error = 'Connect to a device with a SPIFFS partition first.';
     return;
@@ -2612,7 +3017,7 @@ async function loadSpiffsPartition(partition) {
       label: `${partition.label || 'SPIFFS'}${spiffsBaudLabel}`,
       cancelSignal: spiffsLoadCancelRequested,
       onProgress: progress => {
-        spiffsLoadingDialog.label = progress.label;
+        spiffsLoadingDialog.label = progress.label ?? spiffsLoadingDialog.label;
         spiffsLoadingDialog.value = progress.value ?? 0;
       },
     });
@@ -2621,7 +3026,7 @@ async function loadSpiffsPartition(partition) {
     spiffsState.lastReadImage = image;
     let client;
     try {
-      client = await InMemorySpiffsClient.fromImage(image);
+      client = await createSpiffsFromImage(image);
     } catch (error) {
       spiffsState.error = formatErrorMessage(error);
       spiffsState.readOnly = true;
@@ -2630,7 +3035,7 @@ async function loadSpiffsPartition(partition) {
       spiffsState.client = null;
       spiffsState.files = [];
       spiffsState.baselineFiles = [];
-      updateSpiffsUsage();
+      await updateSpiffsUsage();
       return;
     }
     spiffsState.client = client;
@@ -2641,7 +3046,7 @@ async function loadSpiffsPartition(partition) {
     }));
     spiffsState.dirty = false;
     spiffsState.backupDone = false;
-    updateSpiffsUsage();
+    await updateSpiffsUsage();
     const count = spiffsState.files.length;
     spiffsState.status = count === 1 ? 'Loaded 1 file.' : `Loaded ${count} files.`;
     appendLog(
@@ -2657,7 +3062,7 @@ async function loadSpiffsPartition(partition) {
       spiffsState.baselineFiles = [];
       spiffsState.dirty = false;
       spiffsState.backupDone = false;
-      updateSpiffsUsage();
+      await updateSpiffsUsage();
       spiffsState.error = null;
       spiffsState.readOnly = false;
       spiffsState.readOnlyReason = '';
@@ -2682,11 +3087,11 @@ async function refreshSpiffsListing() {
     return;
   }
   spiffsState.files = await spiffsState.client.list();
-  updateSpiffsUsage();
+  await updateSpiffsUsage();
 }
 
 // Mark the SPIFFS state as dirty and optionally set a status message.
-function markSpiffsDirty(message) {
+function markSpiffsDirty(message?: string) {
   spiffsState.dirty = true;
   if (message) {
     spiffsState.status = message;
@@ -2699,12 +3104,25 @@ function computeSpiffsDiff() {
 }
 
 // Build file diff summary between two file lists.
-function computeFileDiff(baselineFiles = [], currentFiles = []) {
-  const baselineMap = new Map(baselineFiles.map(file => [(file.path || file.name), file.size]));
-  const currentMap = new Map(currentFiles.map(file => [(file.path || file.name), file.size]));
-  const added = [];
-  const removed = [];
-  const modified = [];
+type FileDiffEntry = { name?: string; path?: string; size?: number };
+
+function computeFileDiff(baselineFiles: FileDiffEntry[] = [], currentFiles: FileDiffEntry[] = []) {
+  const baselineMap = new Map<string, number | undefined>();
+  for (const file of baselineFiles) {
+    const key = file.path || file.name;
+    if (!key) continue;
+    baselineMap.set(key, file.size);
+  }
+
+  const currentMap = new Map<string, number | undefined>();
+  for (const file of currentFiles) {
+    const key = file.path || file.name;
+    if (!key) continue;
+    currentMap.set(key, file.size);
+  }
+  const added: string[] = [];
+  const removed: string[] = [];
+  const modified: string[] = [];
   for (const [name, size] of currentMap.entries()) {
     if (!baselineMap.has(name)) {
       added.push(`${name} (${formatBytes(size) ?? `${size} bytes`})`);
@@ -2732,19 +3150,69 @@ function computeFatfsDiff() {
   return computeFileDiff(fatfsState.baselineFiles, fatfsState.files);
 }
 
+function handleSelectNvsPartition(partitionId: string | number | null) {
+  nvsState.selectedId = normalizePartitionId(partitionId);
+  nvsState.result = null;
+  nvsState.error = null;
+  nvsState.status = 'Ready to read NVS.';
+}
+
+async function handleReadNvs() {
+  const partition = nvsSelectedPartition.value ?? nvsPartitions.value[0];
+  if (!partition) {
+    nvsState.error = 'No NVS partition found in the partition table.';
+    nvsState.status = 'NVS read unavailable.';
+    return;
+  }
+  if (!loader.value) {
+    nvsState.error = 'Connect to a device first.';
+    nvsState.status = 'NVS read unavailable.';
+    return;
+  }
+  if (nvsState.loading) {
+    return;
+  }
+
+  nvsState.selectedId = partition.id;
+  nvsState.loading = true;
+  nvsState.error = null;
+  nvsState.result = null;
+  const baudLabel = currentBaud.value ? ` @ ${currentBaud.value.toLocaleString()} bps` : '';
+  nvsState.status = `Reading NVS @ 0x${partition.offset.toString(16).toUpperCase()}${baudLabel}...`;
+  try {
+    const image = await readFlashToBuffer(partition.offset, partition.size, {
+      label: `NVS${baudLabel}`,
+      onProgress: progress => {
+        if (progress?.label) {
+          nvsState.status = progress.label;
+        }
+      },
+    });
+    const parsed = parseNvsPartition(image);
+    nvsState.result = parsed;
+    nvsState.status = `Parsed NVS v${parsed.version} (${parsed.namespaces.length.toLocaleString()} namespaces, ${parsed.entries.length.toLocaleString()} entries).`;
+  } catch (error) {
+    nvsState.error = formatErrorMessage(error);
+    nvsState.status = 'NVS read failed.';
+  } finally {
+    nvsState.loading = false;
+  }
+}
+
 // Select a SPIFFS partition and trigger a load.
-async function handleSelectSpiffsPartition(partitionId) {
+function handleSelectSpiffsPartition(partitionId: string | number | null) {
   if (spiffsState.loading || spiffsState.busy || spiffsState.saving) {
     return;
   }
-  spiffsState.selectedId = partitionId;
+  const id = normalizePartitionId(partitionId);
+  spiffsState.selectedId = id;
   spiffsState.client = null;
   spiffsState.files = [];
   spiffsState.status = 'Loading SPIFFS...';
   const partition =
-    spiffsPartitions.value.find(entry => entry.id === partitionId) ?? spiffsPartitions.value[0];
+    (id != null ? spiffsPartitions.value.find(entry => entry.id === id) : null) ?? spiffsPartitions.value[0];
   if (partition) {
-    await loadSpiffsPartition(partition);
+    void loadSpiffsPartition(partition);
   }
 }
 
@@ -2777,8 +3245,8 @@ async function handleSpiffsBackup() {
     const stampedName = `${safeBase}_${formatBackupTimestamp()}.bin`;
     const cachedImage =
       spiffsState.lastReadImage &&
-      spiffsState.lastReadOffset === partition.offset &&
-      spiffsState.lastReadSize === partition.size
+        spiffsState.lastReadOffset === partition.offset &&
+        spiffsState.lastReadSize === partition.size
         ? spiffsState.lastReadImage
         : null;
     if (cachedImage) {
@@ -2817,7 +3285,7 @@ async function handleSpiffsBackup() {
 }
 
 // Restore a SPIFFS image to the selected partition.
-async function handleSpiffsRestore(file) {
+async function handleSpiffsRestore(file: File | null) {
   const partition = spiffsSelectedPartition.value;
   if (!partition) return;
   if (!file) return;
@@ -2826,10 +3294,11 @@ async function handleSpiffsRestore(file) {
     spiffsState.status = `Restore file must be exactly ${formatBytes(partition.size) ?? `${partition.size} bytes`}.`;
     return;
   }
+  const fileLabel = file.name ? `"${file.name}"` : 'the selected image';
   const confirmed = await showConfirmation({
     title: 'Restore SPIFFS Partition',
     message:
-      'This will overwrite the entire SPIFFS partition with the selected image. Continue?',
+      `This will overwrite the entire SPIFFS partition with ${fileLabel}. Continue?`,
     confirmText: 'Restore',
     destructive: true,
   });
@@ -2867,7 +3336,7 @@ async function handleSpiffsRestore(file) {
 }
 
 // Download a SPIFFS file to the host.
-async function handleSpiffsDownloadFile(name) {
+async function handleSpiffsDownloadFile(name: string) {
   if (!spiffsState.client) return;
   try {
     const data = await spiffsState.client.read(name);
@@ -2879,7 +3348,7 @@ async function handleSpiffsDownloadFile(name) {
 }
 
 // Validate a selected file before queueing a SPIFFS upload.
-function handleSpiffsUploadSelection(file) {
+function handleSpiffsUploadSelection(file: File | null) {
   if (!file || !spiffsState.client) {
     spiffsState.uploadBlocked = false;
     spiffsState.uploadBlockedReason = '';
@@ -2931,7 +3400,7 @@ function resetViewerMedia() {
 }
 
 // Surface upload-related errors through the toast and dialog.
-function showUploadError(message) {
+function showUploadError(message: string) {
   showToast(message || 'Not enough filesystem space to store this file.', { color: 'error', timeout: 6000 });
 }
 
@@ -2950,7 +3419,7 @@ function showToast(message: string, options: ToastOptions = {}) {
 }
 
 // Preview a SPIFFS file using the viewer dialog.
-async function handleSpiffsView(name) {
+async function handleSpiffsView(name: string) {
   if (!spiffsState.client) return;
   const viewInfo = resolveSpiffsViewInfo(name);
   if (!viewInfo) {
@@ -2974,16 +3443,17 @@ async function handleSpiffsView(name) {
       );
     }
     if (viewInfo.mode === 'image') {
-      const blob = new Blob([data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)], { type: viewInfo.mime || 'image/*' });
+      const blob = new Blob([toArrayBuffer(data)], { type: viewInfo.mime || 'image/*' });
       spiffsViewerDialog.imageUrl = URL.createObjectURL(blob);
     } else if (viewInfo.mode === 'audio') {
-      const blob = new Blob([data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)], { type: viewInfo.mime || 'audio/*' });
+      const blob = new Blob([toArrayBuffer(data)], { type: viewInfo.mime || 'audio/*' });
       spiffsViewerDialog.audioUrl = URL.createObjectURL(blob);
     } else {
       spiffsViewerDialog.content = SPIFFS_VIEWER_DECODER.decode(data);
     }
   } catch (error) {
     spiffsViewerDialog.error = formatErrorMessage(error);
+    console.error('[ESPConnect] SPIFFS preview failed', { name, error });
   } finally {
     spiffsViewerDialog.loading = false;
   }
@@ -3033,8 +3503,16 @@ function cancelSpiffsLoad() {
   spiffsLoadingDialog.label = 'Stopping SPIFFS load...';
 }
 
+function isSpiffsPartitionFullError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'number' && code === SpiffsErrorCode.SPIFFS_ERR_FULL;
+}
+
 // Upload a file to SPIFFS with size checks and staging.
-async function handleSpiffsUpload({ file }) {
+async function handleSpiffsUpload({ file }: { file: File | null }) {
   if (!spiffsState.client) return;
   if (spiffsState.readOnly) {
     spiffsState.status = spiffsState.readOnlyReason || 'SPIFFS is read-only.';
@@ -3069,11 +3547,19 @@ async function handleSpiffsUpload({ file }) {
     spiffsState.uploadBlocked = false;
     spiffsState.uploadBlockedReason = '';
   } catch (error) {
-    const isSpaceError = typeof error?.message === 'string' && error.message.includes('Not enough SPIFFS space');
-    const isNameTooLong = typeof error?.message === 'string' && error.message.includes('File name too long');
+    const partitionFullMessage = 'SPIFFS partition is full. Delete files or format the partition before uploading.';
+    if (isSpiffsPartitionFullError(error)) {
+      spiffsState.status = partitionFullMessage;
+      spiffsState.error = partitionFullMessage;
+      showUploadError(partitionFullMessage);
+      return;
+    }
+    const message = formatErrorMessage(error);
+    const isSpaceError = message.includes('Not enough SPIFFS space');
+    const isNameTooLong = message.includes('File name too long');
     const friendly = isSpaceError
       ? 'Not enough SPIFFS space for this file. Delete files or format the partition, then try again.'
-      : formatErrorMessage(error);
+      : message;
     if (!isNameTooLong) {
       spiffsState.status = friendly || 'SPIFFS upload failed.';
     }
@@ -3091,7 +3577,7 @@ async function handleSpiffsUpload({ file }) {
 }
 
 // Delete a SPIFFS file after confirmation.
-async function handleSpiffsDelete(name) {
+async function handleSpiffsDelete(name: string) {
   if (!spiffsState.client || spiffsState.readOnly) {
     return;
   }
@@ -3249,12 +3735,9 @@ type LoadAppMetadataOptions = {
   force?: boolean;
 };
 
-type ResetOptions = {
-  silent?: boolean;
-};
-
 type StopMonitorOptions = {
   closeConnection?: boolean;
+  returnToMaintenance?: boolean;
 };
 
 type BaudRate = (typeof SUPPORTED_BAUDRATES)[number];
@@ -3283,10 +3766,11 @@ type CancelDownloadOptions = {
 // Write a filesystem image to flash with progress callbacks.
 async function writeFilesystemImage(partition: any, image: Uint8Array, options: WriteFilesystemOptions = {}) {
   const { onProgress, label = 'filesystem', state, compress = true } = options;
-  if (!loader.value) {
+  const loaderInstance = loader.value;
+  if (!loaderInstance) {
     throw new Error('Loader unavailable.');
   }
-  await loader.value.flashData(
+  await runLoaderOperation(() => loaderInstance.flashData(
     toArrayBuffer(image),
     (written, total) => {
       const progressValue = total ? Math.min(100, Math.floor((written / total) * 100)) : 0;
@@ -3303,7 +3787,18 @@ async function writeFilesystemImage(partition: any, image: Uint8Array, options: 
     },
     partition.offset,
     compress
-  );
+  ));
+  const finishingLabel = `Finalizing ${label}...`;
+  if (state) {
+    state.status = finishingLabel;
+  }
+  onProgress?.({
+    value: 100,
+    label: finishingLabel,
+    written: image.length,
+    total: image.length,
+  });
+  await esptoolClient.value?.syncWithStub();
 }
 
 const FILESYSTEM_LOAD_CANCELLED_MESSAGE = 'Filesystem load cancelled by user';
@@ -3312,7 +3807,8 @@ const FLASH_READ_MIN_CHUNK = 0x1000;
 
 // Read a region of flash into a buffer with chunked progress reporting.
 async function readFlashToBuffer(offset: number, length: number, options: ReadFlashOptions = {}) {
-  if (!loader.value) {
+  const loaderInstance = loader.value;
+  if (!loaderInstance) {
     throw new Error('Device not connected.');
   }
   if (!Number.isSafeInteger(offset) || offset < 0) {
@@ -3323,58 +3819,60 @@ async function readFlashToBuffer(offset: number, length: number, options: ReadFl
   }
   const cancelSignal = options.cancelSignal;
   const label = options.label || 'filesystem';
-  const chunkBuffers = [];
-  const chunkSize = Math.max(FLASH_READ_MIN_CHUNK, Math.min(FLASH_READ_MAX_CHUNK, length));
-  let totalReceived = 0;
-  while (totalReceived < length) {
+  return await runLoaderOperation(async () => {
+    const chunkBuffers = [];
+    const chunkSize = Math.max(FLASH_READ_MIN_CHUNK, Math.min(FLASH_READ_MAX_CHUNK, length));
+    let totalReceived = 0;
+    while (totalReceived < length) {
+      if (cancelSignal?.value) {
+        throw new Error(FILESYSTEM_LOAD_CANCELLED_MESSAGE);
+      }
+      const remaining = length - totalReceived;
+      const currentChunkSize = Math.min(chunkSize, remaining);
+      const chunkOffset = offset + totalReceived;
+      const chunkBase = totalReceived;
+      const chunk = await loaderInstance.readFlash(
+        chunkOffset,
+        currentChunkSize,
+        (_packet, received) => {
+          const chunkReceived = Math.min(received, currentChunkSize);
+          const overallReceived = chunkBase + chunkReceived;
+          const progressValue = length ? Math.min(100, Math.floor((overallReceived / length) * 100)) : 0;
+          let progressLabel = `Reading ${label} - ${overallReceived.toLocaleString()} of ${length.toLocaleString()} bytes`;
+          if (cancelSignal?.value) {
+            progressLabel = `Stopping read of ${label} after current chunk... (${overallReceived.toLocaleString()} of ${length.toLocaleString()} bytes)`;
+          }
+          if (typeof options.onProgress === 'function') {
+            options.onProgress({
+              value: progressValue,
+              label: progressLabel,
+              written: overallReceived,
+              total: length,
+            });
+          }
+        }
+      );
+      chunkBuffers.push(chunk);
+      totalReceived += chunk.length;
+    }
     if (cancelSignal?.value) {
       throw new Error(FILESYSTEM_LOAD_CANCELLED_MESSAGE);
     }
-    const remaining = length - totalReceived;
-    const currentChunkSize = Math.min(chunkSize, remaining);
-    const chunkOffset = offset + totalReceived;
-    const chunkBase = totalReceived;
-    const chunk = await loader.value.readFlash(
-      chunkOffset,
-      currentChunkSize,
-      (_packet, received) => {
-        const chunkReceived = Math.min(received, currentChunkSize);
-        const overallReceived = chunkBase + chunkReceived;
-        const progressValue = length ? Math.min(100, Math.floor((overallReceived / length) * 100)) : 0;
-        let progressLabel = `Reading ${label} - ${overallReceived.toLocaleString()} of ${length.toLocaleString()} bytes`;
-        if (cancelSignal?.value) {
-          progressLabel = `Stopping read of ${label} after current chunk... (${overallReceived.toLocaleString()} of ${length.toLocaleString()} bytes)`;
-        }
-        if (typeof options.onProgress === 'function') {
-          options.onProgress({
-            value: progressValue,
-            label: progressLabel,
-            written: overallReceived,
-            total: length,
-          });
-        }
-      }
-    );
-    chunkBuffers.push(chunk);
-    totalReceived += chunk.length;
-  }
-  if (cancelSignal?.value) {
-    throw new Error(FILESYSTEM_LOAD_CANCELLED_MESSAGE);
-  }
-  if (chunkBuffers.length === 1) {
-    return chunkBuffers[0];
-  }
-  const buffer = new Uint8Array(totalReceived);
-  let writeOffset = 0;
-  for (const chunk of chunkBuffers) {
-    buffer.set(chunk, writeOffset);
-    writeOffset += chunk.length;
-  }
-  return buffer;
+    if (chunkBuffers.length === 1) {
+      return chunkBuffers[0];
+    }
+    const buffer = new Uint8Array(totalReceived);
+    let writeOffset = 0;
+    for (const chunk of chunkBuffers) {
+      buffer.set(chunk, writeOffset);
+      writeOffset += chunk.length;
+    }
+    return buffer;
+  });
 }
 
 // Map chip package codes to human-friendly labels.
-function resolvePackageLabel(chipKey, pkgVersion, chipRevision) {
+function resolvePackageLabel(chipKey: string, pkgVersion: unknown, chipRevision: unknown): string | null {
   const mapper = PACKAGE_LABELS[chipKey];
   if (!mapper || typeof pkgVersion !== 'number' || Number.isNaN(pkgVersion)) {
     return null;
@@ -3388,7 +3886,12 @@ function resolvePackageLabel(chipKey, pkgVersion, chipRevision) {
 }
 
 // Build a revision label from chip revision or version numbers.
-function resolveRevisionLabel(chipKey, chipRevision, majorVersion, minorVersion) {
+function resolveRevisionLabel(
+  chipKey: string,
+  chipRevision: unknown,
+  majorVersion: unknown,
+  minorVersion: unknown
+): string | null {
   if (chipKey === 'ESP32' && typeof chipRevision === 'number' && !Number.isNaN(chipRevision)) {
     const eco = ECO_LABELS[chipRevision];
     return eco ? `${eco} (r${chipRevision})` : `r${chipRevision}`;
@@ -3408,7 +3911,7 @@ function resolveRevisionLabel(chipKey, chipRevision, majorVersion, minorVersion)
 }
 
 // Strip a keyword from an embedded feature string.
-function cleanEmbeddedFeature(feature, keyword) {
+function cleanEmbeddedFeature(feature: string, keyword: string): string {
   const match = feature.match(new RegExp(`${keyword}\\s*(.*)`, 'i'));
   if (match && match[1]) {
     return match[1].trim();
@@ -3417,7 +3920,12 @@ function cleanEmbeddedFeature(feature, keyword) {
 }
 
 // Resolve embedded flash capacity and vendor from chip metadata.
-function resolveEmbeddedFlash(chipKey, flashCap, flashVendor, featureList) {
+function resolveEmbeddedFlash(
+  chipKey: string,
+  flashCap: unknown,
+  flashVendor: string | null | undefined,
+  featureList: string[],
+): string | null {
   const map = EMBEDDED_FLASH_CAPACITY[chipKey];
   if (map && typeof flashCap === 'number' && !Number.isNaN(flashCap) && map[flashCap]) {
     const vendorLabel = formatVendorLabel(flashVendor);
@@ -3431,7 +3939,7 @@ function resolveEmbeddedFlash(chipKey, flashCap, flashVendor, featureList) {
 }
 
 // Extract CPU frequency from a list of feature strings.
-function extractCpuFrequency(featureList) {
+function extractCpuFrequency(featureList: unknown): string | null {
   if (!Array.isArray(featureList)) return null;
   for (const feature of featureList) {
     if (!feature) continue;
@@ -3444,7 +3952,7 @@ function extractCpuFrequency(featureList) {
 }
 
 // Extract core count from a list of feature strings.
-function extractCoreCount(featureList) {
+function extractCoreCount(featureList: unknown): string | null {
   if (!Array.isArray(featureList)) return null;
   for (const feature of featureList) {
     if (!feature) continue;
@@ -3463,7 +3971,12 @@ function extractCoreCount(featureList) {
 }
 
 // Resolve embedded PSRAM capacity and vendor from chip metadata.
-function resolveEmbeddedPsram(chipKey, psramCap, psramVendor, featureList) {
+function resolveEmbeddedPsram(
+  chipKey: string,
+  psramCap: unknown,
+  psramVendor: string | null | undefined,
+  featureList: string[],
+): string | null {
   const map = EMBEDDED_PSRAM_CAPACITY[chipKey];
   if (map && typeof psramCap === 'number' && !Number.isNaN(psramCap) && map[psramCap]) {
     const vendorLabel = formatVendorLabel(psramVendor);
@@ -3476,28 +3989,48 @@ function resolveEmbeddedPsram(chipKey, psramCap, psramVendor, featureList) {
   return null;
 }
 
-const serialSupported = 'serial' in navigator;
+const isE2E =
+  import.meta.env.VITE_E2E === '1' ||
+  import.meta.env.VITE_E2E === 'true' ||
+  (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('e2e'));
+const serialSupported = isE2E || 'serial' in navigator;
+const { t } = useI18n();
+const serialPortPicker = reactive({
+  visible: false,
+  requestId: '',
+  ports: [] as ElectronSerialPortPickerPort[],
+  selectedPortId: '',
+});
 const connected = ref(false);
 const busy = ref(false);
 const flashInProgress = ref(false);
 const flashProgress = ref(0);
-const flashProgressDialog = reactive({ visible: false, value: 0, label: '' });
+const flashProgressDialog = reactive<ProgressDialogState>({
+  visible: false,
+  value: 0,
+  label: '',
+  indeterminate: false,
+});
 const flashCancelRequested = ref(false);
+const ERASE_CANCEL_MESSAGE = 'Flash erase cancelled by user';
+let eraseFillBlock: number[] | null = null;
 const selectedBaud = ref<BaudRate>(DEFAULT_FLASH_BAUD as BaudRate);
 const baudrateOptions = SUPPORTED_BAUDRATES;
 const flashOffset = ref('0x0');
+const partitionTableOffset = ref(0x8000);
 const eraseFlash = ref(false);
 const higherBaudrateAvailable = ref(false);
-const selectedPreset = ref(null);
-const selectedPartitionDownload = ref(null);
-const integrityPartition = ref(null);
+const selectedPreset = ref<string | number | null>(null);
+const selectedPartitionDownload = ref<PartitionOptionValue | null>(null);
+const integrityPartition = ref<PartitionOptionValue | null>(null);
 const currentBaud = ref(DEFAULT_FLASH_BAUD);
 const lastFlashBaud = ref(DEFAULT_FLASH_BAUD);
 const previousMonitorBaud = ref(DEFAULT_FLASH_BAUD);
 let suspendBaudWatcher = false;
+let removeSerialPortPickerListener: (() => void) | null = null;
 const baudChangeBusy = ref(false);
 const maintenanceBusy = ref(false);
-const downloadProgress = reactive({ visible: false, value: 0, label: '' });
+const downloadProgress = reactive<ProgressDialogState>({ visible: false, value: 0, label: '' });
 const downloadCancelRequested = ref(false);
 const {
   spiffsState,
@@ -3525,13 +4058,27 @@ const {
   fatfsSaveDialog,
   fatfsRestoreDialog,
 } = useFatfsManager(FATFS_DEFAULT_BLOCK_SIZE);
+let fatfsUploadQueue = Promise.resolve();
+const nvsState = reactive<{
+  selectedId: number | null;
+  status: string;
+  loading: boolean;
+  error: string | null;
+  result: NvsParseResult | null;
+}>({
+  selectedId: null,
+  status: 'Select an NVS partition to begin.',
+  loading: false,
+  error: null,
+  result: null,
+});
 const registerAddress = ref('0x0');
 const registerValue = ref('');
-const registerReadResult = ref(null);
-const registerStatus = ref(null);
-const registerStatusType = ref('info');
-const registerOptions = ref([]);
-const registerReference = ref(null);
+const registerReadResult = ref<string | null>(null);
+const registerStatus = ref<string | null>(null);
+const registerStatusType = ref<AlertType>('info');
+const registerOptions = ref<RegisterOption[]>([]);
+const registerReference = ref<RegisterReference | null>(null);
 const registerOptionLookup = computed(() => {
   const map = new Map();
   for (const option of registerOptions.value) {
@@ -3547,21 +4094,44 @@ const registerOptionLookup = computed(() => {
 });
 const md5Offset = ref('0x0');
 const md5Length = ref('');
-const md5Result = ref(null);
-const md5Status = ref(null);
-const md5StatusType = ref('info');
+const md5Result = ref<string | null>(null);
+const md5Status = ref<string | null>(null);
+const md5StatusType = ref<AlertType>('info');
 const flashReadOffset = ref('0x0');
 const flashReadLength = ref('');
-const flashReadStatus = ref(null);
-const flashReadStatusType = ref('info');
-const appPartitions = ref([]);
+const flashReadStatus = ref<string | null>(null);
+const flashReadStatusType = ref<AlertType>('info');
+const appPartitions = ref<AppPartitionMetadata[]>([]);
 const appMetadataLoading = ref(false);
-const appMetadataError = ref(null);
-const activeAppSlotId = ref(null);
+const appMetadataError = ref<string | null>(null);
+const activeAppSlotId = ref<string | null>(null);
 const appActiveSummary = ref('Active slot unknown.');
 const appMetadataLoaded = ref(false);
 const { connectDialog, toast } = useDialogs();
-let connectDialogTimer = null;
+let connectDialogTimer: ReturnType<typeof setTimeout> | null = null;
+const nvsPartitions = computed(() =>
+  partitionTable.value
+    .filter(
+      entry =>
+        entry &&
+        typeof entry.type === 'number' &&
+        typeof entry.subtype === 'number' &&
+        entry.type === 0x01 &&
+        (entry.subtype === 0x02 || entry.subtype === 0x87),
+    )
+    .map(entry => ({
+      id: entry.offset,
+      label: entry.label?.trim() || (entry.subtype === 0x87 ? 'Factory NVS' : 'NVS'),
+      offset: entry.offset,
+      size: entry.size,
+      sizeText: formatBytes(entry.size) ?? `${entry.size} bytes`,
+    })),
+);
+const nvsAvailable = computed(() => nvsPartitions.value.length > 0);
+const nvsSelectedPartition = computed(() =>
+  nvsPartitions.value.find(partition => partition.id === nvsState.selectedId) ?? null,
+);
+const hasNvsPartitionSelected = computed(() => Boolean(nvsSelectedPartition.value));
 const spiffsPartitions = computed(() =>
   partitionTable.value
     .filter(
@@ -3570,9 +4140,7 @@ const spiffsPartitions = computed(() =>
         typeof entry.type === 'number' &&
         typeof entry.subtype === 'number' &&
         entry.type === 0x01 &&
-        entry.subtype === 0x82 &&
-        // Show only partitions that are NOT detected as LittleFS
-        entry.detectedFilesystem !== 'littlefs',
+        (entry.detectedFilesystem ? entry.detectedFilesystem === 'spiffs' : entry.subtype === 0x82),
     )
     .map(entry => ({
       id: entry.offset,
@@ -3597,9 +4165,10 @@ const littleFsPartitions = computed(() =>
       if (entry.type !== 0x01) {
         return false;
       }
-      // LittleFS: dedicated subtype 0x83 OR 0x82 with detected LittleFS
-      return entry.subtype === 0x83 ||
-        (entry.subtype === 0x82 && entry.detectedFilesystem === 'littlefs');
+      if (entry.detectedFilesystem) {
+        return entry.detectedFilesystem === 'littlefs';
+      }
+      return entry.subtype === 0x83;
     })
     .map(entry => ({
       id: entry.offset,
@@ -3614,6 +4183,10 @@ const littlefsVisibleFiles = computed(() => {
   const base = normalizeFsPath(littlefsState.currentPath || '/');
   return littlefsState.files.filter(entry => isDirectChildPath(entry.path, base));
 });
+const fatfsVisibleFiles = computed(() => {
+  const base = normalizeFsPath(fatfsState.currentPath || '/');
+  return fatfsState.files.filter(entry => isDirectChildPath(entry.path, base));
+});
 const fatfsPartitions = computed(() =>
   partitionTable.value
     .filter(entry => {
@@ -3624,6 +4197,9 @@ const fatfsPartitions = computed(() =>
         return false;
       }
       const label = entry.label?.toLowerCase().trim() || '';
+      if (entry.detectedFilesystem) {
+        return entry.detectedFilesystem === 'fatfs';
+      }
       return entry.subtype === 0x81 || label.includes('fat');
     })
     .map(entry => ({
@@ -3644,15 +4220,19 @@ const fatfsSelectedPartition = computed(() =>
 );
 const hasFatfsPartitionSelected = computed(() => Boolean(fatfsSelectedPartition.value));
 const logBuffer = ref('');
-const monitorText = ref('');
-const monitorActive = ref(false);
-const monitorError = ref(null);
-const monitorAbortController = ref(null);
+const monitorText = ref<string>('');
+const monitorActive = ref<boolean>(false);
+const monitorError = ref<SerialMonitorError>(null);
+const monitorStarting = ref<boolean>(false);
+const monitorAbortController = ref<AbortController | null>(null);
 const serialMonitorClosedPrompt = ref(false);
-const maintenanceNavigationLocked = computed(() => monitorActive.value);
+const maintenanceReturnInProgress = ref(false);
+const maintenanceNavigationLocked = computed(
+  () => monitorActive.value || maintenanceReturnInProgress.value
+);
 const MONITOR_BUFFER_LIMIT = 20000;
 let monitorPendingText = '';
-let monitorFlushHandle = null;
+let monitorFlushHandle: ReturnType<typeof setTimeout> | number | null = null;
 let monitorFlushUsingAnimationFrame = false;
 const confirmationDialog = reactive({
   visible: false,
@@ -3662,57 +4242,82 @@ const confirmationDialog = reactive({
   cancelText: 'Cancel',
   destructive: false,
 });
-let confirmationResolver = null;
-const currentPort = ref(null);
-const transport = ref<CompatibleTransport | null>(null);
-const loader = ref<CompatibleLoader | null>(null);
-const firmwareBuffer = ref(null);
+let confirmationResolver: ((confirmed: boolean) => void) | null = null;
+const currentPort = ref<SerialPort | null>(null);
+const transport = shallowRef<CompatibleTransport | null>(null);
+const loader = shallowRef<ESPLoader | null>(null);
+const esptoolClient = shallowRef<EsptoolClient | null>(null);
+async function runLoaderOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const client = esptoolClient.value;
+  if (client?.runWithBusy) {
+    return await client.runWithBusy(operation);
+  }
+  return await operation();
+}
+function recordPartitionTableReadError(error: unknown) {
+  partitionTableReadError.value = formatErrorMessage(error);
+}
+const firmwareBuffer = ref<ArrayBuffer | null>(null);
 const firmwareName = ref('');
-const chipDetails = ref(null);
+const chipDetails = ref<DeviceDetails | null>(null);
 const partitionFlashSizeLabel = computed(() => chipDetails.value?.flashSize ?? null);
-const partitionTable = ref([]);
+const partitionTable = ref<PartitionTableEntry[]>([]);
+const partitionTableReadError = ref<string | null>(null);
+const appMetadataDisplayError = computed(() => {
+  if (partitionTableReadError.value) {
+    return t('apps.alerts.partitionTableUnavailable');
+  }
+  return appMetadataError.value;
+});
 const activeTab = ref('info');
-const sessionLogRef = ref(null);
+const sessionLogRef = ref<SessionLogTabRef | null>(null);
 const navigationItems = computed(() => [
-  { title: 'Device Info', value: 'info', icon: 'mdi-information-outline', disabled: false },
-  { title: 'Partitions', value: 'partitions', icon: 'mdi-table', disabled: !connected.value },
+  { title: t('navigation.deviceInfo'), value: 'info', icon: 'mdi-information-outline', disabled: false },
+  { title: t('navigation.partitions'), value: 'partitions', icon: 'mdi-table', disabled: !connected.value },
   {
-    title: 'Apps',
+    title: t('navigation.apps'),
     value: 'apps',
     icon: 'mdi-application',
     disabled: !connected.value || maintenanceNavigationLocked.value,
   },
   {
-    title: 'SPIFFS Tools',
+    title: t('navigation.nvs'),
+    value: 'nvs',
+    icon: 'mdi-database-search',
+    disabled:
+      !connected.value || !nvsAvailable.value || maintenanceNavigationLocked.value,
+  },
+  {
+    title: t('navigation.spiffs'),
     value: 'spiffs',
     icon: 'mdi-folder-wrench',
     disabled:
       !connected.value || !spiffsAvailable.value || maintenanceNavigationLocked.value,
   },
   {
-    title: 'LittleFS Tools',
+    title: t('navigation.littlefs'),
     value: 'littlefs',
     icon: 'mdi-alpha-l-circle-outline',
     disabled:
       !connected.value || !littleFsAvailable.value || maintenanceNavigationLocked.value,
   },
   {
-    title: 'FATFS Tools',
+    title: t('navigation.fatfs'),
     value: 'fatfs',
     icon: 'mdi-alpha-f-circle-outline',
     disabled:
       !connected.value || !fatfsAvailable.value || maintenanceNavigationLocked.value,
   },
   {
-    title: 'Flash Tools',
+    title: t('navigation.flash'),
     value: 'flash',
     icon: 'mdi-chip',
     disabled: !connected.value || maintenanceNavigationLocked.value,
   },
-  { title: 'Serial Monitor', value: 'console', icon: 'mdi-console-line', disabled: false },
-  { title: 'Session Log', value: 'log', icon: 'mdi-clipboard-text-outline', disabled: false },
+  { title: t('navigation.console'), value: 'console', icon: 'mdi-console-line', disabled: false },
+  { title: t('navigation.log'), value: 'log', icon: 'mdi-clipboard-text-outline', disabled: false },
   {
-    title: 'About',
+    title: t('navigation.about'),
     value: 'about',
     icon: 'mdi-information-box-outline',
     disabled: false,
@@ -3728,24 +4333,24 @@ watch(
   }
 );
 
-const resourceLinks = [
+const resourceLinks = computed(() => [
   {
-    title: 'Tutorial',
+    title: t('resources.tutorial'),
     href: 'https://youtu.be/-nhDKzBxHiI',
     icon: 'mdi-youtube',
   },
   {
-    title: 'Buy Me a Coffee',
+    title: t('resources.buyCoffee'),
     href: 'https://buymeacoffee.com/thelastoutpostworkshop',
     icon: 'mdi-coffee',
   },
   {
-    title: 'Get Help',
+    title: t('resources.getHelp'),
     href: 'https://github.com/thelastoutpostworkshop/ESPConnect',
     icon: 'mdi-lifebuoy',
   },
-];
-const flashSizeBytes = ref(null);
+]);
+const flashSizeBytes = ref<number | null>(null);
 
 const showBusyDialog = ref(false);
 const busyDialogMessage = ref('');
@@ -3769,8 +4374,41 @@ const themeIcon = computed(() =>
   isDarkTheme.value ? 'mdi-weather-night' : 'mdi-white-balance-sunny'
 );
 
+const currentLanguage = computed<SupportedLocale>(() => getLanguage());
+const languageLabelKeys: Record<SupportedLocale, string> = {
+  en: 'language.english',
+  fr: 'language.french',
+  zh: 'language.chinese',
+  tr: 'language.turkish',
+  de: 'language.german',
+  cs: 'language.czech',
+};
+const languageOptions = computed(() =>
+  supportedLocales.map(code => ({
+    code,
+    label: t(languageLabelKeys[code]),
+  })),
+);
+const currentLanguageLabel = computed(() =>
+  languageOptions.value.find(lang => lang.code === currentLanguage.value)?.label ??
+  t(languageLabelKeys.en),
+);
+const otherLanguageLabel = computed(() => {
+  const option = languageOptions.value.find(lang => lang.code !== currentLanguage.value);
+  return option?.label ?? currentLanguageLabel.value;
+});
+const languageMenuTitle = computed(() =>
+  t('language.switchTo', { language: otherLanguageLabel.value }),
+);
+
+function selectLanguage(code: SupportedLocale) {
+  if (code !== currentLanguage.value) {
+    setLanguage(code);
+  }
+}
+
 // Apply or remove the light-theme helper class on the document body.
-function applyThemeClass(name) {
+function applyThemeClass(name: string) {
   if (typeof document !== 'undefined') {
     document.body.classList.toggle('light-theme', name === 'light');
   }
@@ -3802,13 +4440,16 @@ async function setConnectionBaud(targetBaud: string | number, options: SetBaudOp
   }
 
   if (connected.value && loader.value) {
+    const loaderInstance = loader.value;
     try {
       baudChangeBusy.value = true;
       if (log) {
         appendLog('Changing baud to ' + parsed.toLocaleString() + ' bps...', '[ESPConnect-Debug]');
       }
-      loader.value.baudrate = parsed;
-      await loader.value.setBaudrate(parsed);
+      await runLoaderOperation(async () => {
+        await loaderInstance.setBaudrate(parsed);
+        await loaderInstance.sleep(300); // Fix needed for Native USB (0x1001), otherwise an error is raised
+      });
       if (transport.value) {
         transport.value.baudrate = parsed;
       }
@@ -3817,7 +4458,7 @@ async function setConnectionBaud(targetBaud: string | number, options: SetBaudOp
       }
     } catch (error) {
       if (log) {
-        appendLog('Baud change failed: ' + (error?.message || error), '[ESPConnect-Warn]');
+        appendLog('Baud change failed: ' + formatErrorMessage(error), '[ESPConnect-Warn]');
       }
       throw error;
     } finally {
@@ -3926,7 +4567,15 @@ watch(
       resetSpiffsState();
       resetLittlefsState();
       resetFatfsState();
+      resetNvsState();
       return;
+    }
+    if (nvsPartitions.value.length) {
+      if (!nvsPartitions.value.some(partition => partition.id === nvsState.selectedId)) {
+        nvsState.selectedId = nvsPartitions.value[0].id;
+      }
+    } else {
+      resetNvsState();
     }
     if (spiffsPartitions.value.length) {
       if (!spiffsPartitions.value.some(partition => partition.id === spiffsState.selectedId)) {
@@ -3962,7 +4611,7 @@ watch(
 );
 
 // Normalize a register address input to hex string form.
-function normalizeRegisterAddressValue(value) {
+function normalizeRegisterAddressValue(value: string | number | null | undefined): string | null {
   if (value === null || value === undefined) {
     return null;
   }
@@ -3980,7 +4629,7 @@ function normalizeRegisterAddressValue(value) {
 }
 
 // Read a 32-bit little-endian value from a byte buffer.
-function readUint32LE(buffer, offset) {
+function readUint32LE(buffer: Uint8Array, offset: number) {
   if (!buffer || offset == null || offset < 0 || offset + 4 > buffer.length) {
     return 0;
   }
@@ -3993,7 +4642,7 @@ function readUint32LE(buffer, offset) {
 }
 
 // Decode a null-terminated C string from a Uint8Array.
-function decodeCString(bytes) {
+function decodeCString(bytes: Uint8Array) {
   if (!bytes || !bytes.length) {
     return '';
   }
@@ -4013,7 +4662,15 @@ function decodeCString(bytes) {
 }
 
 // Locate and parse an app descriptor from a firmware buffer.
-function extractAppDescriptor(buffer) {
+type AppDescriptor = {
+  version: string;
+  projectName: string;
+  time: string;
+  date: string;
+  idfVersion: string;
+};
+
+function extractAppDescriptor(buffer: Uint8Array): AppDescriptor | null {
   if (!buffer || buffer.length < APP_DESCRIPTOR_LENGTH) {
     return null;
   }
@@ -4042,126 +4699,123 @@ function extractAppDescriptor(buffer) {
   return null;
 }
 
-// Determine the active OTA slot from otadata contents.
-function detectActiveOtaSlot(otadata, otaEntries) {
-  const otaCount = otaEntries?.length ?? 0;
-  if (!otadata || !otadata.length || !otaCount) {
-    return { slotId: null, summary: 'Active slot unknown.' };
-  }
-  const entryCount = Math.min(Math.floor(otadata.length / OTA_SELECT_ENTRY_SIZE), otaCount > 1 ? 2 : 1);
-  const entries = [];
-  for (let index = 0; index < entryCount; index += 1) {
-    const base = index * OTA_SELECT_ENTRY_SIZE;
-    const seq = readUint32LE(otadata, base);
-    if (!seq || Number.isNaN(seq) || seq === 0xffffffff || seq === 0xfffffffe || seq >= 0x80000000) {
-      continue;
-    }
-    const slotIndex = (seq - 1) % otaCount;
-    if (slotIndex < 0 || slotIndex >= otaCount) {
-      continue;
-    }
-    const stateOffset = base + 16;
-    const state = stateOffset < otadata.length ? otadata[stateOffset] : null;
-    entries.push({
-      seq,
-      slotIndex,
-      state,
-    });
-  }
-  if (!entries.length) {
-    return { slotId: null, summary: 'Active slot unknown.' };
-  }
-  entries.sort((a, b) => b.seq - a.seq);
-  const winner = entries[0];
-  const slotEntry = otaEntries[winner.slotIndex];
-  if (!slotEntry) {
-    return { slotId: null, summary: 'Active slot unknown.' };
-  }
-  const slotId = `ota_${winner.slotIndex}`;
-  return {
-    slotId,
-    summary: `Active slot: ${slotId} (sequence ${winner.seq})`,
-  };
-}
-
 // Scan application partitions to build metadata and identify the active slot.
-async function analyzeAppPartitions(loaderInstance, partitions) {
+const OTA_DATA_SECTOR_BYTES = 0x1000;
+
+async function analyzeAppPartitions(loaderInstance: ESPLoader, partitions: PartitionTableEntry[]) {
   appPartitions.value = [];
   activeAppSlotId.value = null;
   appMetadataError.value = null;
-  appActiveSummary.value = 'Active slot unknown.';
-  if (!loaderInstance || !Array.isArray(partitions) || !partitions.length) {
-    return;
-  }
+  appActiveSummary.value = "Active slot unknown.";
+
+  if (!loaderInstance || !Array.isArray(partitions) || !partitions.length) return;
 
   const appEntries = partitions
     .filter(entry => entry && entry.type === 0x00)
     .map(entry => ({ ...entry }))
     .sort((a, b) => a.offset - b.offset);
 
-  if (!appEntries.length) {
-    return;
-  }
+  if (!appEntries.length) return;
 
-  const factoryEntry = appEntries.find(entry => entry.subtype === 0x00);
+  const factoryEntry = appEntries.find(entry => entry.subtype === 0x00) ?? null;
   const otaEntries = appEntries
     .filter(entry => entry.subtype >= 0x10 && entry.subtype <= 0x1f)
     .sort((a, b) => (a.subtype ?? 0) - (b.subtype ?? 0));
 
-  let activeSlotId = null;
-  let activeSummary = 'Active slot unknown.';
-  const otadataEntry = partitions.find(entry => entry.type === 0x01 && entry.subtype === 0x02);
+  let activeSlotId: string | null = null;
+  let activeSummary: string | null = null;
+  let otadataSelectionUnavailable = false;
+  let activeSlotFromOtadata = false;
+
+  // ---- Read otadata (DATA/OTA = type 0x01, subtype 0x00) ----
+  const otadataEntry = partitions.find(entry => entry.type === 0x01 && entry.subtype === 0x00) ?? null;
+  appendLog(
+    `otadataEntry: type=0x${otadataEntry?.type?.toString(16)} subtype=0x${otadataEntry?.subtype?.toString(16)} offset=0x${otadataEntry?.offset?.toString(16)} size=${otadataEntry?.size}`
+  );
+
+  const hex = (buf: Uint8Array) =>
+    Array.from(buf).map(b => b.toString(16).padStart(2, "0")).join(" ");
+
   if (otadataEntry && otaEntries.length) {
     try {
-      const readLength = Math.min(Math.max(OTA_SELECT_ENTRY_SIZE * 2, 64), otadataEntry.size || OTA_SELECT_ENTRY_SIZE * 2);
-      const otadata = await loaderInstance.readFlash(otadataEntry.offset, readLength);
-      const detected = detectActiveOtaSlot(otadata, otaEntries);
-      if (detected.slotId) {
-        activeSlotId = detected.slotId;
-        activeSummary = detected.summary;
+      // Always read the two otadata sectors (0x2000) from the otadata partition start.
+      const desiredLength = OTA_DATA_SECTOR_BYTES * 2; // 0x2000
+      const primaryBlock = await loaderInstance.readFlash(otadataEntry.offset, desiredLength);
+
+      // Debug: show the first 32 bytes of each sector.
+      appendLog(`otadata sector0[0..31]=${hex(primaryBlock.subarray(0x0000, 0x0020))}`);
+      appendLog(`otadata sector1[0..31]=${hex(primaryBlock.subarray(0x1000, 0x1020))}`);
+
+      // Debug: parse seq/crc directly from the same buffer (sector starts).
+      const seq0 = readUint32LE(primaryBlock, 0x0000);
+      const crc0 = readUint32LE(primaryBlock, 0x0000 + 28);
+      const seq1 = readUint32LE(primaryBlock, 0x1000);
+      const crc1 = readUint32LE(primaryBlock, 0x1000 + 28);
+
+      appendLog(
+        `otadata parsed: seq0=${seq0} crc0=0x${(crc0 ?? 0).toString(16)} seq1=${seq1} crc1=0x${(crc1 ?? 0).toString(16)}`
+      );
+
+      // Detect active slot from REAL-layout otadata (primaryBlock is already 0x2000).
+      const otaDetected = detectActiveOtaSlot(primaryBlock, otaEntries);
+
+      if (otaDetected.slotId) {
+        activeSlotId = otaDetected.slotId;
+        activeSlotFromOtadata = true;
+      } else if (otaDetected.summary === "No valid OTA selection found") {
+        otadataSelectionUnavailable = true;
       }
+
+      activeSummary = otaDetected.summary;
     } catch (error) {
-      appendLog('Failed to read OTA data partition', error);
-      appMetadataError.value = 'Unable to read OTA metadata.';
+      appendLog("Failed to read OTA data partition", error);
+      appMetadataError.value = "Unable to read OTA metadata.";
     }
   }
 
-  if (!activeSlotId) {
+  // If otadata didn’t give a slot, fall back (factory if present, else unknown for now).
+  if (!activeSlotId && !otadataSelectionUnavailable) {
     if (factoryEntry) {
-      activeSlotId = 'factory';
-      activeSummary = 'Active slot: factory (fallback)';
+      activeSlotId = "factory";
+      activeSummary = activeSummary ?? "Active slot: factory (fallback)";
     } else {
-      activeSummary = 'Active slot unknown.';
+      activeSummary = activeSummary ?? "Active slot unknown.";
     }
   }
 
-  const results = [];
+  if (!activeSummary) activeSummary = "Active slot unknown.";
+
+  // ---- Scan app partitions and extract metadata ----
+  const results: AppPartitionMetadata[] = [];
+
   for (const entry of appEntries) {
     const slotLabel =
       entry.subtype === 0x00
-        ? 'factory'
+        ? "factory"
         : entry.subtype >= 0x10 && entry.subtype <= 0x1f
           ? `ota_${entry.subtype - 0x10}`
           : `subtype_0x${entry.subtype.toString(16)}`;
 
     const readSize = Math.min(APP_SCAN_LENGTH, entry.size || APP_SCAN_LENGTH);
-    let buffer = null;
-    let imageError = null;
+    let buffer: Uint8Array | null = null;
+    let imageError: string | null = null;
+
     if (readSize >= 24) {
       try {
         buffer = await loaderInstance.readFlash(entry.offset, readSize);
       } catch (error) {
-        imageError = error?.message || String(error);
+        imageError = formatErrorMessage(error);
         appendLog(`Failed to read app partition ${entry.label || slotLabel}`, error);
       }
     } else {
-      imageError = 'Partition too small to contain app image header.';
+      imageError = "Partition too small to contain app image header.";
     }
 
     const offsetHex = `0x${entry.offset.toString(16).toUpperCase()}`;
     const sizeText = formatBytes(entry.size) ?? `${entry.size} bytes`;
     const displayName = entry.label?.trim() || slotLabel.toUpperCase();
-    const appInfo = {
+
+    const appInfo: AppPartitionMetadata = {
       key: `${slotLabel}-${entry.offset}`,
       label: displayName,
       slotLabel,
@@ -4192,13 +4846,16 @@ async function analyzeAppPartitions(loaderInstance, partitions) {
     }
 
     if (!buffer || buffer.length < 8) {
-      appInfo.error = 'App header truncated.';
+      appInfo.error = "App header truncated.";
       results.push(appInfo);
       continue;
     }
 
+    // If flash encryption is enabled, header magic won’t be readable.
+    // The partition can still be a valid app slot; we just can’t parse metadata.
     if (buffer[0] !== APP_IMAGE_HEADER_MAGIC) {
-      appInfo.error = 'Encrypted or invalid image header.';
+      appInfo.valid = true;
+      appInfo.error = "Image header unreadable (likely flash-encrypted).";
       results.push(appInfo);
       continue;
     }
@@ -4207,9 +4864,7 @@ async function analyzeAppPartitions(loaderInstance, partitions) {
     appInfo.segmentCount = buffer[1];
     appInfo.entryAddress = readUint32LE(buffer, 4);
     appInfo.entryAddressHex =
-      appInfo.entryAddress != null
-        ? `0x${appInfo.entryAddress.toString(16).toUpperCase()}`
-        : null;
+      appInfo.entryAddress != null ? `0x${appInfo.entryAddress.toString(16).toUpperCase()}` : null;
 
     const descriptor = extractAppDescriptor(buffer);
     if (descriptor) {
@@ -4219,28 +4874,31 @@ async function analyzeAppPartitions(loaderInstance, partitions) {
       appInfo.buildTime = descriptor.time || null;
       appInfo.buildDate = descriptor.date || null;
       appInfo.idfVersion = descriptor.idfVersion || null;
-      const builtParts = [];
+
+      const builtParts: string[] = [];
       if (descriptor.date) builtParts.push(descriptor.date);
       if (descriptor.time) builtParts.push(descriptor.time);
-      appInfo.built = builtParts.join(' ').trim() || null;
+      appInfo.built = builtParts.join(" ").trim() || null;
     }
 
     results.push(appInfo);
   }
 
-  let resolvedSlotId = activeSlotId;
+  // ---- Resolve active slot for UI ----
+  let resolvedSlotId: string | null = activeSlotId;
   let resolvedSummary = activeSummary;
-  const activeInfoCandidate = resolvedSlotId
-    ? results.find(info => info.slotLabel === resolvedSlotId)
-    : null;
+  const activeInfoCandidate = resolvedSlotId ? results.find(info => info.slotLabel === resolvedSlotId) ?? null : null;
 
-  if (!activeInfoCandidate || !activeInfoCandidate.valid) {
+  // Only do “infer active slot from valid images” when we DID NOT get a slot from otadata.
+  if (!otadataSelectionUnavailable && !activeSlotFromOtadata && (!activeInfoCandidate || !activeInfoCandidate.valid)) {
     const fallbackCandidates = [
-      results.find(info => info.valid && info.slotLabel === 'factory'),
-      results.find(info => info.valid && info.slotLabel.startsWith('ota_')),
+      results.find(info => info.valid && info.slotLabel === "factory"),
+      results.find(info => info.valid && info.slotLabel.startsWith("ota_")),
       results.find(info => info.valid),
-    ].filter(Boolean);
+    ].filter((candidate): candidate is AppPartitionMetadata => Boolean(candidate));
+
     const fallbackInfo = fallbackCandidates.length ? fallbackCandidates[0] : null;
+
     if (fallbackInfo) {
       resolvedSlotId = fallbackInfo.slotLabel;
       resolvedSummary =
@@ -4249,8 +4907,17 @@ async function analyzeAppPartitions(loaderInstance, partitions) {
           : `Active slot inferred: ${fallbackInfo.slotLabel}.`;
     } else if (activeInfoCandidate && !activeInfoCandidate.valid) {
       resolvedSlotId = null;
-      resolvedSummary = 'Active slot invalid.';
+      resolvedSummary = "Active slot invalid.";
     }
+  } else if (activeSlotFromOtadata && activeInfoCandidate && !activeInfoCandidate.valid) {
+    // Keep the otadata-selected slot even if we can’t parse the header/metadata.
+    resolvedSummary =
+      `Active slot from otadata: ${activeInfoCandidate.slotLabel}. ` +
+      `Image metadata unavailable (encrypted or unreadable header).`;
+  } else if (otadataSelectionUnavailable) {
+    // If you prefer bootloader-style fallback, replace this branch with the fallback logic.
+    resolvedSlotId = null;
+    resolvedSummary = activeSummary;
   }
 
   for (const info of results) {
@@ -4262,6 +4929,7 @@ async function analyzeAppPartitions(loaderInstance, partitions) {
   appActiveSummary.value = resolvedSummary;
   appMetadataLoaded.value = true;
 }
+
 
 // Reset cached application metadata.
 function resetAppMetadata() {
@@ -4282,7 +4950,8 @@ async function loadAppMetadata(options: LoadAppMetadataOptions = {}) {
   if (!force && appMetadataLoaded.value) {
     return;
   }
-  if (!connected.value || !loader.value) {
+  const loaderInstance = loader.value;
+  if (!connected.value || !loaderInstance) {
     return;
   }
   const partitions = partitionTable.value;
@@ -4293,10 +4962,10 @@ async function loadAppMetadata(options: LoadAppMetadataOptions = {}) {
   appMetadataError.value = null;
   appMetadataLoaded.value = false;
   try {
-    await analyzeAppPartitions(loader.value, partitions);
+    await runLoaderOperation(() => analyzeAppPartitions(loaderInstance, partitions));
   } catch (error) {
     appendLog('Failed to analyze app partitions', error);
-    appMetadataError.value = error?.message || String(error);
+    appMetadataError.value = formatErrorMessage(error);
     appMetadataLoaded.value = false;
   } finally {
     appMetadataLoading.value = false;
@@ -4304,15 +4973,15 @@ async function loadAppMetadata(options: LoadAppMetadataOptions = {}) {
 }
 
 // Apply register lookup data for the selected chip.
-function applyRegisterGuide(chipKey) {
-  const guide = chipKey ? registerGuides?.[chipKey] : undefined;
+function applyRegisterGuide(chipKey: string | null | undefined) {
+  const guide = chipKey ? (registerGuides as Record<string, any>)[chipKey] : undefined;
   if (!guide) {
     registerOptions.value = [];
     registerReference.value = null;
     return;
   }
   registerReference.value = guide.reference || null;
-  registerOptions.value = (guide.registers || []).map(entry => {
+  registerOptions.value = (guide.registers || []).map((entry: any) => {
     const normalized = normalizeRegisterAddressValue(entry.address);
     return {
       label: entry.name,
@@ -4337,7 +5006,7 @@ function showConfirmation(options: ConfirmationOptions = {}) {
 }
 
 // Resolve the pending confirmation promise and close the dialog.
-function resolveConfirmation(result) {
+function resolveConfirmation(result: boolean) {
   if (!confirmationDialog.visible) {
     if (confirmationResolver) {
       confirmationResolver(result);
@@ -4353,7 +5022,7 @@ function resolveConfirmation(result) {
   }
 }
 
-const partitionColorOverrides = {
+const partitionColorOverrides: Record<string, string | undefined> = {
   factory: '#f8b26a',
   ota_0: '#7cc576',
   ota_1: '#58a55b',
@@ -4370,7 +5039,7 @@ const partitionColorOverrides = {
   test: '#f48fb1',
 };
 
-const partitionTypeColors = {
+const partitionTypeColors: Record<number, string | undefined> = {
   0x00: '#4caf50',
   0x01: '#2196f3',
 };
@@ -4386,14 +5055,14 @@ const partitionPalette = [
   '#ffc6ff',
 ];
 
-const UNUSED_FLASH_ALERT_THRESHOLD = 64 * 1024;
+const UNUSED_FLASH_ALERT_THRESHOLD = 500 * 1024;
 
-const PARTITION_TYPE_NAMES = {
+const PARTITION_TYPE_NAMES: Record<number, string> = {
   0x00: 'Application',
   0x01: 'Data',
 };
 
-const PARTITION_DATA_SUBTYPE_NAMES = {
+const PARTITION_DATA_SUBTYPE_NAMES: Record<number, string> = {
   0x00: 'OTA Data',
   0x01: 'PHY Init Data',
   0x02: 'NVS',
@@ -4412,38 +5081,40 @@ const PARTITION_DATA_SUBTYPE_NAMES = {
 };
 
 // Format a number as a two-digit hex string with prefix.
-function toPaddedHex(value) {
+function toPaddedHex(value: string | number | null | undefined) {
   const hex = Number(value).toString(16).toUpperCase();
   return `0x${hex.padStart(2, '0')}`;
 }
 
 // Build a label for a partition type value.
-function getPartitionTypeLabel(type) {
+function getPartitionTypeLabel(type: number | null | undefined) {
   const hex = toPaddedHex(type ?? 0);
-  const name = PARTITION_TYPE_NAMES[type];
+  const name = PARTITION_TYPE_NAMES[type ?? 0];
   return name ? `${name} (${hex})` : `Type ${hex}`;
 }
 
 // Build a label for a partition subtype given its type.
-function getPartitionSubtypeLabel(type, subtype) {
-  const hex = toPaddedHex(subtype ?? 0);
-  let name;
+function getPartitionSubtypeLabel(type: number | null | undefined, subtype: number | null | undefined) {
+  const subtypeValue = subtype ?? 0;
+  const typeValue = type ?? 0;
+  const hex = toPaddedHex(subtypeValue);
+  let name: string | undefined;
 
-  if (type === 0x00) {
-    if (subtype === 0x00) {
+  if (typeValue === 0x00) {
+    if (subtypeValue === 0x00) {
       name = 'Factory App';
-    } else if (subtype === 0x01) {
+    } else if (subtypeValue === 0x01) {
       name = 'Test App';
-    } else if (subtype >= 0x10 && subtype <= 0x1f) {
-      name = `OTA ${subtype - 0x10}`;
-    } else if (subtype === 0x20) {
+    } else if (subtypeValue >= 0x10 && subtypeValue <= 0x1f) {
+      name = `OTA ${subtypeValue - 0x10}`;
+    } else if (subtypeValue === 0x20) {
       name = 'Any App';
-    } else if (subtype === 0x21) {
+    } else if (subtypeValue === 0x21) {
       name = 'OTA App';
     }
-  } else if (type === 0x01) {
-    name = PARTITION_DATA_SUBTYPE_NAMES[subtype];
-    if (!name && subtype >= 0x80 && subtype <= 0x9f) {
+  } else if (typeValue === 0x01) {
+    name = PARTITION_DATA_SUBTYPE_NAMES[subtypeValue];
+    if (!name && subtypeValue >= 0x80 && subtypeValue <= 0x9f) {
       name = 'Custom Data';
     }
   }
@@ -4455,34 +5126,62 @@ const UNUSED_SEGMENT_COLOR = '#c62828';
 const UNUSED_SEGMENT_PATTERN =
   'repeating-linear-gradient(270deg, rgba(248, 113, 113, 0.65) 0px, rgba(248, 113, 113, 0.65) 12px, rgba(220, 38, 38, 0.65) 12px, rgba(220, 38, 38, 0.65) 24px)';
 
-const RESERVED_SEGMENTS = [
-  {
-    key: 'bootloader',
-    label: 'Bootloader',
-    offset: 0x0,
-    size: 0x8000,
-    color: '#546e7a',
-  },
-  {
-    key: 'partition-table',
-    label: 'Partition Table',
-    offset: 0x8000,
-    size: 0x1000,
-    color: '#78909c',
-  },
-];
+const RESERVED_SEGMENTS = computed(() => {
+  const ptOffset = Number.isSafeInteger(partitionTableOffset.value) && partitionTableOffset.value > 0
+    ? partitionTableOffset.value
+    : 0x8000;
+  return [
+    {
+      key: 'bootloader',
+      label: 'Bootloader',
+      offset: 0x0,
+      size: ptOffset,
+      color: '#546e7a',
+    },
+    {
+      key: 'partition-table',
+      label: 'Partition Table',
+      offset: ptOffset,
+      size: 0x1000,
+      color: '#78909c',
+    },
+  ];
+});
 
 const MIN_SEGMENT_PERCENT = 1; // ensure tiny partitions remain hoverable in the map
 
-const partitionSegments = computed(() => {
+type PartitionMapSegment =
+  | {
+    kind: 'unused';
+    key: string;
+    offset: number;
+    size: number;
+  }
+  | {
+    kind: 'reserved';
+    key: string;
+    offset: number;
+    size: number;
+    label: string;
+    color: string;
+  }
+  | {
+    kind: 'partition';
+    key: string;
+    offset: number;
+    size: number;
+    entry: PartitionTableEntry;
+  };
+
+const partitionSegments = computed<PartitionSegment[]>(() => {
   if (!connected.value) {
     return [];
   }
-  if(partitionTable.value.length == 0) {
+  if (partitionTable.value.length == 0) {
     return [];
   }
   const sortedPartitions = [...partitionTable.value].sort((a, b) => a.offset - b.offset);
-  const parseFlashSizeLabel = label => {
+  const parseFlashSizeLabel = (label: unknown): number | null => {
     if (!label || typeof label !== 'string') return null;
     const match = label.match(/(\d+(?:\.\d+)?)\s*(MB|KB)/i);
     if (!match) return null;
@@ -4493,16 +5192,16 @@ const partitionSegments = computed(() => {
   const totalFlash =
     (flashSizeBytes.value && flashSizeBytes.value > 0 ? flashSizeBytes.value : null) ||
     parseFlashSizeLabel(partitionFlashSizeLabel.value);
-  const segments = [];
+  const segments: PartitionMapSegment[] = [];
   let cursor = 0;
 
-  const createGapSegments = (start, size) => {
+  const createGapSegments = (start: number, size: number): PartitionMapSegment[] => {
     if (size <= 0) return [];
     const end = start + size;
-    const gapSegments = [];
+    const gapSegments: PartitionMapSegment[] = [];
     let pointer = start;
 
-    const relevantReserved = RESERVED_SEGMENTS.filter(
+    const relevantReserved = RESERVED_SEGMENTS.value.filter(
       block => block.offset < end && block.offset + block.size > start
     ).sort((a, b) => a.offset - b.offset);
 
@@ -4705,7 +5404,7 @@ const totalUnusedFlashBytes = computed(() =>
     .reduce((sum, segment) => sum + (segment.size || 0), 0)
 );
 
-const unusedFlashSummary = computed(() => {
+const unusedFlashSummary = computed<UnusedFlashSummary | null>(() => {
   const bytes = totalUnusedFlashBytes.value;
   if (!bytes || bytes < UNUSED_FLASH_ALERT_THRESHOLD) {
     return null;
@@ -4717,7 +5416,7 @@ const unusedFlashSummary = computed(() => {
   };
 });
 
-const formattedPartitions = computed(() => {
+const formattedPartitions = computed<FormattedPartitionRow[]>(() => {
   const segmentByOffset = new Map();
   for (const segment of partitionSegments.value) {
     if (!segment.isUnused && !segment.isReserved) {
@@ -4725,7 +5424,7 @@ const formattedPartitions = computed(() => {
     }
   }
 
-  const reservedRows = RESERVED_SEGMENTS.map(segment => {
+  const reservedRows = RESERVED_SEGMENTS.value.map(segment => {
     const offsetHex = `0x${segment.offset.toString(16).toUpperCase()}`;
     const sizeText = formatBytes(segment.size) ?? `${segment.size} bytes`;
     return {
@@ -4850,11 +5549,15 @@ watch([md5Offset, md5Length], ([offsetValue, lengthValue]) => {
 
 const connectionChipLabel = computed(() => {
   if (!connected.value) {
-    return 'Disconnected';
+    return t('status.disconnected');
+  }
+
+  if (isE2E) {
+    return t('status.connected');
   }
 
   const name = chipDetails.value?.name?.trim();
-  return name ? `${name}` : 'Connected';
+  return name || t('status.connected');
 });
 
 const canFlash = computed(
@@ -4869,8 +5572,30 @@ const showSerialMonitorReconnectNotice = computed(
 );
 
 // Append a message to the session log buffer.
-function appendLog(message, prefix = '[ESPConnect-ui]') {
-  const line = prefix ? `${prefix} ${message}` : message;
+function appendLog(message: string, prefix?: string): void;
+function appendLog(message: string, detail: unknown, prefix?: string): void;
+function appendLog(message: string, detailOrPrefix: unknown = '[ESPConnect-ui]', prefix?: string) {
+  const defaultPrefix = '[ESPConnect-ui]';
+  let effectivePrefix = defaultPrefix;
+  let detail: unknown = undefined;
+
+  if (typeof detailOrPrefix === 'string') {
+    effectivePrefix = detailOrPrefix || defaultPrefix;
+  } else if (detailOrPrefix != null) {
+    detail = detailOrPrefix;
+    if (typeof prefix === 'string') {
+      effectivePrefix = prefix || defaultPrefix;
+    }
+  } else if (typeof prefix === 'string') {
+    effectivePrefix = prefix || defaultPrefix;
+  }
+
+  const detailText = detail != null ? ` ${formatErrorMessage(detail)}` : '';
+  const timestamp = new Date().toISOString();
+  const versionTag = `v${APP_VERSION ?? '?.?'}`;
+  const meta = `${versionTag} ${timestamp}`;
+  const entry = effectivePrefix ? `${effectivePrefix} ${message}${detailText}` : `${message}${detailText}`;
+  const line = `${meta} ${entry}`;
   logBuffer.value += `${line}\n`;
 }
 
@@ -4885,10 +5610,10 @@ const terminal = {
   clean() {
     logBuffer.value = '';
   },
-  write(data) {
+  write(data: string) {
     logBuffer.value += data;
   },
-  writeLine(data) {
+  writeLine(data: string) {
     logBuffer.value += `${data}\n`;
   },
 };
@@ -4898,10 +5623,12 @@ function clearLog() {
   terminal.clean();
 }
 
-let monitorDecoder = null;
+let monitorDecoder: TextDecoder | null = null;
 let monitorNoiseChunks = 0;
 let monitorNoiseWarned = false;
 let monitorAutoResetPerformed = false;
+let monitorTask: Promise<void> | null = null;
+const monitorTextEncoder = new TextEncoder();
 
 // Cancel any scheduled serial monitor flush.
 function cancelMonitorFlush() {
@@ -4909,7 +5636,7 @@ function cancelMonitorFlush() {
     return;
   }
   if (monitorFlushUsingAnimationFrame && typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
-    window.cancelAnimationFrame(monitorFlushHandle);
+    window.cancelAnimationFrame(monitorFlushHandle as number);
   } else {
     clearTimeout(monitorFlushHandle);
   }
@@ -4948,7 +5675,7 @@ function scheduleMonitorFlush() {
 }
 
 // Retrieve USB vendor/product info for a Web Serial port.
-function getPortIdentity(port) {
+function getPortIdentity(port: SerialPort | null | undefined): SerialPortInfo | null {
   if (!port || typeof port.getInfo !== 'function') {
     return null;
   }
@@ -4961,7 +5688,7 @@ function getPortIdentity(port) {
 }
 
 // Compare two serial ports by USB identity.
-function serialPortsMatch(portA, portB) {
+function serialPortsMatch(portA: SerialPort | null | undefined, portB: SerialPort | null | undefined): boolean {
   if (!portA || !portB) return false;
   if (portA === portB) return true;
   const infoA = getPortIdentity(portA);
@@ -4973,7 +5700,7 @@ function serialPortsMatch(portA, portB) {
 }
 
 // Decode monitor data chunks and buffer them for display while handling noise.
-function appendMonitorChunk(bytes) {
+function appendMonitorChunk(bytes: Uint8Array) {
   if (!bytes || !bytes.length) return;
   if (!monitorDecoder) {
     monitorDecoder = new TextDecoder();
@@ -5025,7 +5752,9 @@ function clearMonitorOutput() {
 }
 
 // React to browser-level serial disconnect events and clean up connections.
-async function handleSerialDisconnectEvent(event) {
+type SerialDisconnectEvent = Event & { port?: SerialPort; target?: { port?: SerialPort } };
+
+async function onSerialDisconnectEvent(event: SerialDisconnectEvent) {
   const eventPort = event?.target?.port ?? event?.port ?? null;
   if (eventPort && currentPort.value && !serialPortsMatch(eventPort, currentPort.value)) {
     return;
@@ -5043,13 +5772,17 @@ async function handleSerialDisconnectEvent(event) {
   }
 }
 
+function handleSerialDisconnectEvent(event: Event) {
+  void onSerialDisconnectEvent(event as SerialDisconnectEvent);
+}
+
 // Read serial data in a loop, pushing it into the monitor until aborted.
-async function monitorLoop(signal) {
+async function monitorLoop(signal: AbortSignal) {
   const transportInstance = transport.value;
   if (!transportInstance) {
     throw new Error('Serial monitor not supported by current transport.');
   }
-  const iterator = transportInstance.rawRead();
+  const iterator = transportInstance.rawRead(signal);
   for await (const chunk of iterator) {
     if (signal.aborted) break;
     if (!chunk || !chunk.length) continue;
@@ -5058,29 +5791,53 @@ async function monitorLoop(signal) {
   flushPendingMonitorText();
 }
 
+async function sendMonitorText(text: string) {
+  if (!text || !monitorActive.value || !canIssueMonitorCommands.value) {
+    return;
+  }
+  const transportInstance = transport.value;
+  if (!transportInstance) {
+    return;
+  }
+  try {
+    await transportInstance.writeRaw(monitorTextEncoder.encode(text));
+  } catch (error) {
+    appendLog(`Unable to send serial input (${formatErrorMessage(error)}).`, '[ESPConnect-Warn]');
+  }
+}
+
 // Kick off the serial monitor and adjust baud if needed.
 async function startMonitor() {
-  if (!canStartMonitor.value || monitorActive.value) {
+  if (!canStartMonitor.value || monitorActive.value || monitorStarting.value) {
     return;
   }
   if (!transport.value) {
     appendLog('Monitor unavailable: transport not ready.', '[ESPConnect-Warn]');
     return;
   }
+  monitorStarting.value = true;
+  try {
+    await startMonitorFlow();
+  } finally {
+    monitorStarting.value = false;
+  }
+}
+
+async function startMonitorFlow() {
   previousMonitorBaud.value = currentBaud.value || lastFlashBaud.value || DEFAULT_FLASH_BAUD;
   if (currentBaud.value !== MONITOR_BAUD) {
     try {
       await setConnectionBaud(MONITOR_BAUD, { remember: false, log: true });
     } catch (error) {
       appendLog(
-        `Continuing monitor at ${currentBaud.value.toLocaleString()} bps (switch failed: ${error?.message || error}).`,
+        `Continuing monitor at ${currentBaud.value.toLocaleString()} bps (switch failed: ${formatErrorMessage(error)}).`,
         '[ESPConnect-Warn]'
       );
     }
   }
   if (!monitorAutoResetPerformed) {
     appendLog('Auto-resetting board before starting serial monitor output.', '[ESPConnect-Debug]');
-    await resetBoard({ silent: true });
+    await enterUserFirmware();
     monitorAutoResetPerformed = true;
   }
   monitorError.value = null;
@@ -5094,12 +5851,12 @@ async function startMonitor() {
   monitorAbortController.value = controller;
   monitorActive.value = true;
   appendLog('Serial monitor started.', '[ESPConnect-Debug]');
-  (async () => {
+  monitorTask = (async () => {
     try {
       await monitorLoop(controller.signal);
     } catch (err) {
       if (!controller.signal.aborted) {
-        monitorError.value = err?.message || String(err);
+        monitorError.value = formatErrorMessage(err);
         appendLog(`Monitor error: ${monitorError.value}`, '[ESPConnect-Warn]');
       }
     } finally {
@@ -5107,17 +5864,34 @@ async function startMonitor() {
         monitorAbortController.value = null;
       }
       monitorActive.value = false;
+      monitorTask = null;
     }
   })();
 }
 
 // Stop the serial monitor and optionally disconnect from the device.
 async function stopMonitor(options: StopMonitorOptions = {}) {
-  if (!monitorActive.value) return;
-  const { closeConnection = false } = options;
-  monitorAbortController.value?.abort();
-  monitorActive.value = false;
+  const { closeConnection = false, returnToMaintenance = true } = options;
+
+  const controller = monitorAbortController.value;
+  const task = monitorTask;
+
+  if (!monitorActive.value && !controller && !task) {
+    return;
+  }
+
+  controller?.abort();
   monitorAbortController.value = null;
+  monitorActive.value = false;
+
+  if (task) {
+    try {
+      await task;
+    } catch {
+      // errors are surfaced in the monitor loop/log
+    }
+  }
+
   cancelMonitorFlush();
   flushPendingMonitorText();
   monitorPendingText = '';
@@ -5129,44 +5903,78 @@ async function stopMonitor(options: StopMonitorOptions = {}) {
     }
     monitorDecoder = null;
   }
+
   appendLog('Serial monitor stopped.', '[ESPConnect-Debug]');
+
   if (closeConnection) {
     await disconnectTransport();
     serialMonitorClosedPrompt.value = true;
-  }
-  // const restoreBaud =
-  //   previousMonitorBaud.value || lastFlashBaud.value || DEFAULT_FLASH_BAUD;
-  if (lastFlashBaud.value) {
-    try {
-      await setConnectionBaud(lastFlashBaud.value, { remember: true, log: true });
-    } catch (error) {
-      appendLog(
-        `Failed to restore baud rate (${error?.message || error}). Remaining at ${currentBaud.value.toLocaleString()} bps.`,
-        '[ESPConnect-Warn]'
-      );
-    }
+    return;
   }
 
+  if (!returnToMaintenance) {
+    return;
+  }
+
+  const loaderInstance = loader.value;
+  if (!connected.value || !loaderInstance) {
+    return;
+  }
+
+  busy.value = true;
+  maintenanceReturnInProgress.value = true;
+  appendLog('Returning to maintenance mode.', '[ESPConnect-ui]');
+  connectDialog.label = t('dialogs.returningToMaintenance');
+  connectDialog.message = t('dialogs.reEnteringBootloader');
+  connectDialog.visible = true;
+  try {
+    await runLoaderOperation(() => loaderInstance.reconnect());
+    monitorAutoResetPerformed = false;
+
+    if (lastFlashBaud.value) {
+      connectDialog.message = t('dialogs.restoringBaud', {
+        baud: lastFlashBaud.value.toLocaleString(),
+      });
+      await setConnectionBaud(lastFlashBaud.value, { remember: true, log: true });
+    }
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : isRecord(error) && typeof error.message === 'string'
+          ? error.message
+          : undefined;
+
+    if (errorMessage === "Couldn't sync to ESP. Try resetting.") {
+      lastErrorMessage.value = formatErrorMessage(error);
+      busyDialogMessage.value = '';
+      showBusyDialog.value = false;
+      showBootDialog.value = true;
+      showGeneralErrorDialog.value = false;
+    } else {
+      appendLog(`Failed to return to maintenance mode: ${formatErrorMessage(error)}`, '[ESPConnect-Warn]');
+    }
+    await disconnectTransport();
+  } finally {
+    connectDialog.visible = false;
+    connectDialog.message = '';
+    maintenanceReturnInProgress.value = false;
+    busy.value = false;
+  }
 }
 
 // Pulse RTS/DTR to reset the target board.
-async function resetBoard(options: ResetOptions = {}) {
-  const { silent = false } = options;
+async function enterUserFirmware() {
   const currentLoader = loader.value;
   if (!currentLoader) {
     appendLog('Cannot reset: loader not available.', '[ESPConnect-Warn]');
     return;
   }
   try {
-    if (!silent) {
-      appendLog('Resetting board (toggle RTS).', '[ESPConnect-Debug]');
-    }
-    await currentLoader.setDTR(false);
-    await currentLoader.setRTS(true);
-    await currentLoader.sleep(120);
-    await currentLoader.setRTS(false);
+    appendLog('Board Hard Reset', '[ESPConnect-Debug]');
+    await runLoaderOperation(() => currentLoader.hardReset(false));
   } catch (err) {
-    appendLog(`Board reset failed: ${err?.message || err}`, '[error]');
+    appendLog(`Board reset failed: ${formatErrorMessage(err)}`, '[error]');
   }
 }
 
@@ -5174,7 +5982,7 @@ async function resetBoard(options: ResetOptions = {}) {
 async function disconnectTransport() {
   try {
     if (monitorActive.value) {
-      await stopMonitor();
+      await stopMonitor({ returnToMaintenance: false });
     } else {
       monitorAbortController.value?.abort();
       monitorAbortController.value = null;
@@ -5194,13 +6002,17 @@ async function disconnectTransport() {
     transport.value = null;
     currentPort.value = null;
     loader.value = null;
+    esptoolClient.value = null;
     connected.value = false;
     chipDetails.value = null;
+    partitionTable.value = [];
+    partitionTableReadError.value = null;
     flashSizeBytes.value = null;
     monitorError.value = null;
     monitorText.value = '';
     monitorAutoResetPerformed = false;
     serialMonitorClosedPrompt.value = false;
+    maintenanceReturnInProgress.value = false;
     resetMaintenanceState();
     resetSpiffsState();
     spiffsState.selectedId = null;
@@ -5208,6 +6020,7 @@ async function disconnectTransport() {
     littlefsState.selectedId = null;
     resetFatfsState();
     fatfsState.selectedId = null;
+    resetNvsState();
     currentBaud.value = DEFAULT_FLASH_BAUD;
     baudChangeBusy.value = false;
     activeTab.value = 'info';
@@ -5227,8 +6040,8 @@ async function connect() {
   serialMonitorClosedPrompt.value = false;
   resetMaintenanceState();
   connectDialog.visible = false;
-  connectDialog.label = 'Connecting to ESP device...';
-  connectDialog.message = 'Opening serial port...';
+  connectDialog.label = t('dialogs.connectingToDevice');
+  connectDialog.message = t('dialogs.openingSerialPort');
   if (connectDialogTimer) {
     clearTimeout(connectDialogTimer);
     connectDialogTimer = null;
@@ -5236,6 +6049,7 @@ async function connect() {
 
   logBuffer.value = '';
   partitionTable.value = [];
+  partitionTableReadError.value = null;
   appendLog('Requesting serial port access...');
 
   try {
@@ -5255,9 +6069,14 @@ async function connect() {
     // Get port and usb bridge information
     const portDetails = currentPort.value?.getInfo ? currentPort.value.getInfo() : null;
     const usbBridge = portDetails ? formatUsbBridge(portDetails) : "Unknown";
-    const bridge = getUsbDeviceInfo(portDetails.usbVendorId, portDetails.usbProductId);
+    const bridge =
+      portDetails &&
+        typeof portDetails.usbVendorId === 'number' &&
+        typeof portDetails.usbProductId === 'number'
+        ? getUsbDeviceInfo(portDetails.usbVendorId, portDetails.usbProductId)
+        : undefined;
 
-    if (bridge.productName === 'CH340' && desiredBaud > bridge.maxBaudrate) {
+    if (bridge && bridge.productName === 'CH340' && typeof bridge.maxBaudrate === 'number' && desiredBaud > bridge.maxBaudrate) {
       // Reduce baud rate for CH340 to the highest supported value under its max.
       const cappedBaud =
         SUPPORTED_BAUDRATES.filter(rate => rate <= bridge.maxBaudrate).pop() ?? DEFAULT_FLASH_BAUD;
@@ -5280,14 +6099,29 @@ async function connect() {
       desiredBaud,
       debugSerial: false,
       debugLogging: false,
-      onStatus: msg => {
-        connectDialog.message = msg;
-        appendLog(msg, '[ESPConnect-Debug]');
+      onStatus: (payload: StatusPayload) => {
+        if (!payload) {
+          return;
+        }
+        const dialogText =
+          payload.translationKey != null
+            ? t(payload.translationKey, payload.params ?? {})
+            : payload.message ?? '';
+        const sessionLogMessage = payload.message ?? '';
+        if (sessionLogMessage) {
+          appendLog(sessionLogMessage, '[ESPConnect-Debug]');
+        }
+        const showInDialog = payload.showInDialog ?? true;
+        if (showInDialog && dialogText) {
+          connectDialog.message = dialogText;
+        }
       },
     });
-    const transportInstance = esptool.transport;
+    esptoolClient.value = esptool;
+    const client = esptoolClient.value;
+    const transportInstance = client.transport;
     transport.value = transportInstance;
-    loader.value = esptool.loader;
+    loader.value = client.loader;
     currentBaud.value = connectBaud_defaultROM;
     transportInstance.baudrate = connectBaud_defaultROM;
 
@@ -5300,8 +6134,8 @@ async function connect() {
     }
 
     // Open the serial port, talk to the ROM bootloader, load the stub flasher
-    connectDialog.message = 'Handshaking with ROM bootloader...';
-    const esp = await esptool.connectAndHandshake();
+    connectDialog.message = t('dialogs.handshakingBootloader');
+    const esp = await client.connectAndHandshake();
     currentBaud.value = desiredBaud || connectBaud_defaultROM;
     transportInstance.baudrate = currentBaud.value;
     const previousSuspendState = suspendBaudWatcher;
@@ -5313,23 +6147,59 @@ async function connect() {
     connected.value = true;
     appendLog(`Handshake complete with ${esp.chipName}. Collecting device details...`, '[ESPConnect-Debug]');
 
+    const englishUnknown = t('deviceInfo.unknown', {}, { locale: 'en' });
+    const chipIdLabel =
+      typeof esp.chipId === 'number' && Number.isFinite(esp.chipId)
+        ? `0x${esp.chipId.toString(16).toUpperCase()}`
+        : englishUnknown;
+    appendLog(
+      t('sessionLog.chipId', { chipId: chipIdLabel }, { locale: 'en' }),
+      '[ESPConnect-Debug]'
+    );
+
     lastFlashBaud.value = currentBaud.value;
 
-    const metadata = await esptool.readChipMetadata();
+    const metadata = await client.readChipMetadata();
+    const pkgVersionLabel =
+      typeof metadata.pkgVersion === 'number' && !Number.isNaN(metadata.pkgVersion)
+        ? String(metadata.pkgVersion)
+        : englishUnknown;
+    const chipRevisionLabel =
+      typeof metadata.chipRevision === 'number' && !Number.isNaN(metadata.chipRevision)
+        ? String(metadata.chipRevision)
+        : englishUnknown;
+    appendLog(
+      t(
+        'sessionLog.chipMetadata',
+        { pkgVersion: pkgVersionLabel, chipRevision: chipRevisionLabel },
+        { locale: 'en' }
+      ),
+      '[ESPConnect-Debug]'
+    );
 
     const descriptionRaw = metadata.description ?? esp.chipName;
     const featuresRaw = metadata.features;
     const crystalFreq = metadata.crystalFreq;
 
-    connectDialog.message = `Reading Flash size...`;
+    connectDialog.message = t('dialogs.readingFlashSize');
     const flashLabel = esp.flashSize;
     appendLog(
       `Chip detectFlashSize: ${flashLabel === null ? 'undefined' : flashLabel}`,
       '[ESPConnect-Debug]'
     );
 
-    const flashId = await esptool.loader.flashId();
-    const id = Number.isFinite(flashId) ? flashId : null;
+    let flashId: number | null = null;
+    let id: number | null = null;
+    try {
+      const detectedFlashId = await runLoaderOperation(() => client.loader.flashId());
+      flashId = detectedFlashId;
+      id = Number.isFinite(detectedFlashId) ? detectedFlashId : null;
+    } catch (error) {
+      appendLog(
+        `Warning: unable to read flash ID (${formatErrorMessage(error)}).`,
+        '[ESPConnect-Warn]'
+      );
+    }
 
     const manufacturerCode = id !== null ? id & 0xff : null;
     const memoryTypeCode = id !== null ? (id >> 8) & 0xff : null;
@@ -5339,17 +6209,17 @@ async function connect() {
       `Flash detect raw: getFlashSize=${flashLabel ?? 'n/a'}, flashId=${typeof flashId === 'number' && Number.isFinite(flashId) ? `0x${flashId
         .toString(16)
         .padStart(6, '0')
-        .toUpperCase()}` : 'n/a'} (manuf=0x${Number.isInteger(manufacturerCode)
+        .toUpperCase()}` : 'n/a'} (manuf=0x${typeof manufacturerCode === 'number'
           ? manufacturerCode.toString(16).toUpperCase().padStart(2, '0')
-          : '??'}, type=0x${Number.isInteger(memoryTypeCode)
+          : '??'}, type=0x${typeof memoryTypeCode === 'number'
             ? memoryTypeCode.toString(16).toUpperCase().padStart(2, '0')
-            : '??'}, cap=0x${Number.isInteger(capacityCodeRaw)
+            : '??'}, cap=0x${typeof capacityCodeRaw === 'number'
               ? capacityCodeRaw.toString(16).toUpperCase().padStart(2, '0')
               : '??'})`,
       '[ESPConnect-Debug]'
     );
 
-    connectDialog.message = `Preparing information...`;
+    connectDialog.message = t('dialogs.preparingInformation');
     const featureList: string[] = Array.isArray(featuresRaw)
       ? (featuresRaw as string[])
       : typeof featuresRaw === 'string'
@@ -5361,13 +6231,14 @@ async function connect() {
     const macLabel = esp.macAddress ?? "unknown";
 
     applyRegisterGuide(esp.chipName);
-    const facts = [];
-    const pushFact = (label, value) => {
+    const facts: DeviceFact[] = [];
+    const pushFact = (label: string, value: string | null | undefined) => {
       if (!value) return;
       facts.push({
         label,
         value,
         icon: FACT_ICONS[label] ?? null,
+        translationKey: getFactLabelKey(label),
       });
     };
     const packageLabel = resolvePackageLabel(esp.chipName, metadata.pkgVersion, metadata.chipRevision);
@@ -5377,11 +6248,8 @@ async function connect() {
       const detail = PACKAGE_FORM_FACTORS[packageMatch[1]];
       pushFact('Package Form Factor', detail);
     }
-    // if (macLabel && macLabel !== 'Unavailable') {
-    //   pushFact('MAC Address', macLabel);
-    // }
+
     pushFact('Revision', resolveRevisionLabel(esp.chipName, metadata.chipRevision, metadata.majorVersion, metadata.minorVersion));
-    // pushFact('Flash Size', flashLabel);
 
     const embeddedFlash = resolveEmbeddedFlash(esp.chipName, metadata.flashCap, metadata.flashVendor, featureList);
     pushFact('Embedded Flash', embeddedFlash);
@@ -5395,15 +6263,18 @@ async function connect() {
     const coreCount = extractCoreCount(featureList);
     pushFact('CPU Cores', coreCount);
 
-    const pwmEntry = esp.chipName ? PWM_TABLE[esp.chipName] : null;
+    const pwmEntry =
+      esp.chipName && esp.chipName in PWM_TABLE ? PWM_TABLE[esp.chipName as keyof typeof PWM_TABLE] : null;
     if (pwmEntry) {
       let pwmLabel = '';
       if (pwmEntry.hasLedc === false) {
         pwmLabel = pwmEntry.notes || 'Software PWM only';
       } else {
-        const parts = [];
-        if (pwmEntry.ledcChannels) parts.push(`${pwmEntry.ledcChannels} channels`);
-        if (pwmEntry.ledcTimers) parts.push(`${pwmEntry.ledcTimers} timers`);
+        const parts: string[] = [];
+        const ledcChannels = (pwmEntry as any).ledcChannels;
+        if (typeof ledcChannels === 'number') parts.push(`${ledcChannels} channels`);
+        const ledcTimers = (pwmEntry as any).ledcTimers;
+        if (typeof ledcTimers === 'number') parts.push(`${ledcTimers} timers`);
         if (pwmEntry.notes) parts.push(pwmEntry.notes);
         pwmLabel = parts.join(' · ');
       }
@@ -5449,12 +6320,12 @@ async function connect() {
     }
 
     if (
-      typeof  metadata.blockVersionMajor === 'number' &&
-      !Number.isNaN( metadata.blockVersionMajor) &&
-      typeof  metadata.blockVersionMinor === 'number' &&
-      !Number.isNaN( metadata.blockVersionMinor)
+      typeof metadata.blockVersionMajor === 'number' &&
+      !Number.isNaN(metadata.blockVersionMajor) &&
+      typeof metadata.blockVersionMinor === 'number' &&
+      !Number.isNaN(metadata.blockVersionMinor)
     ) {
-      pushFact('eFuse Block Version', `v${ metadata.blockVersionMajor}.${ metadata.blockVersionMinor}`);
+      pushFact('eFuse Block Version', `v${metadata.blockVersionMajor}.${metadata.blockVersionMinor}`);
     }
 
     const docs = esp.chipName ? findChipDocs(esp.chipName) : undefined;
@@ -5478,14 +6349,26 @@ async function connect() {
       appendLog(`Warning: failed to flush serial input before partition read (${formatErrorMessage(err)}).`, '[ESPConnect-Warn]');
     }
 
-    connectDialog.message = `Reading partition table...`;
+    connectDialog.message = t('dialogs.readingPartitionTable');
+    partitionTableReadError.value = null;
     if (esp.chipName?.includes('ESP8266')) {
       appendLog('Skipping partition table read for ESP8266 (not supported).', '[ESPConnect-Debug]');
       partitionTable.value = [];
       appMetadataLoaded.value = false;
-    } else {
-      const partitions = await readPartitionTable(loader.value, undefined, undefined, appendLog);
+    } else if (loader.value) {
+      const loaderInstance = loader.value;
+      const detectedOffset = await runLoaderOperation(() => probePartitionTableOffset(loaderInstance, appendLog));
+      const partitionOffset = detectedOffset ?? 0x8000;
+      partitionTableOffset.value = partitionOffset;
+      const partitions = await runLoaderOperation(() =>
+        readPartitionTable(loaderInstance, partitionOffset, undefined, appendLog, {
+          onReadError: recordPartitionTableReadError,
+        }),
+      );
       partitionTable.value = partitions;
+      appMetadataLoaded.value = false;
+    } else {
+      partitionTable.value = [];
       appMetadataLoaded.value = false;
     }
 
@@ -5499,19 +6382,20 @@ async function connect() {
     // const orderedFacts = sortFacts(facts);
     const factGroups = buildFactGroups(facts);
 
-    chipDetails.value = {
+    const details: DeviceDetails = {
       name: esp.chipName,
       description: descriptionRaw || esp.chipName,
       features: featuresDisplay,
       mac: macLabel,
-      flashSize: flashLabel,
+      flashSize: flashLabel ?? null,
       crystal: crystalLabel,
-      facts: facts,
+      facts,
       factGroups,
     };
+    chipDetails.value = details;
     activeTab.value = 'info';
     appendLog(
-      `Loaded device details: ${chipDetails.value.name}, ${facts.length} facts.`,
+      `Loaded device details: ${details.name}, ${facts.length} facts.`,
       '[ESPConnect-Debug]'
     );
 
@@ -5521,9 +6405,22 @@ async function connect() {
     showGeneralErrorDialog.value = false;
     appendLog(`Connection established. Ready to flash.`);
   } catch (error) {
-    if (error?.name === 'AbortError' || error?.name === 'NotFoundError') {
+    const errorName =
+      error instanceof Error
+        ? error.name
+        : isRecord(error) && typeof error.name === 'string'
+          ? error.name
+          : undefined;
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : isRecord(error) && typeof error.message === 'string'
+          ? error.message
+          : undefined;
+
+    if (errorName === 'AbortError' || errorName === 'NotFoundError') {
       appendLog('Port selection was cancelled.');
-    } else if (error?.name === 'NetworkError') {
+    } else if (errorName === 'NetworkError') {
       const busyMessage = 'Selected port is busy or in use. Close other apps or tabs using it and try again.';
       appendLog(busyMessage, '[warn]');
       lastErrorMessage.value = busyMessage;
@@ -5531,7 +6428,7 @@ async function connect() {
       showBusyDialog.value = true;
       showBootDialog.value = false;
       showGeneralErrorDialog.value = false;
-    } else if (error?.message === "Couldn't sync to ESP. Try resetting.") {
+    } else if (errorMessage === "Couldn't sync to ESP. Try resetting.") {
       const message = formatErrorMessage(error);
       lastErrorMessage.value = message;
       busyDialogMessage.value = '';
@@ -5539,8 +6436,9 @@ async function connect() {
       showBootDialog.value = true;
       showGeneralErrorDialog.value = false;
     } else {
-      appendLog(`General code error: ${error?.message}`, '[error]');
-      lastErrorMessage.value = error?.message || 'Unknown error';
+      const message = formatErrorMessage(error);
+      appendLog(`General code error: ${message}`, '[error]');
+      lastErrorMessage.value = message;
       busyDialogMessage.value = '';
       connectDialog.visible = false;
       connectDialog.message = '';
@@ -5570,7 +6468,7 @@ async function disconnect() {
 }
 
 // Parse a flash offset value from hex or decimal input.
-function parseOffset(value) {
+function parseOffset(value: string): number {
   if (!value) {
     throw new Error('Flash offset is required.');
   }
@@ -5585,7 +6483,7 @@ function parseOffset(value) {
 }
 
 // Parse a numeric input (hex or decimal) with validation.
-function parseNumericInput(value, label) {
+function parseNumericInput(value: string | number | null | undefined, label: string): number {
   if (!value || !value.toString().trim()) {
     throw new Error(`${label} is required.`);
   }
@@ -5599,19 +6497,60 @@ function parseNumericInput(value, label) {
   return parsed;
 }
 
+async function refreshPartitionTable(loaderInstance = loader.value) {
+  if (!loaderInstance) {
+    return;
+  }
+  const showDialog = !connectDialog.visible;
+  const previousDialog = showDialog
+    ? { label: connectDialog.label, message: connectDialog.message }
+    : null;
+
+  if (showDialog) {
+    connectDialog.label = t('dialogs.readingPartitionTable');
+    connectDialog.message = '';
+    connectDialog.visible = true;
+  }
+
+  try {
+    partitionTableReadError.value = null;
+    if (chipDetails.value?.name?.includes('ESP8266')) {
+      partitionTable.value = [];
+      return;
+    }
+    const detectedOffset = await runLoaderOperation(() => probePartitionTableOffset(loaderInstance, appendLog));
+    const offset = detectedOffset ?? 0x8000;
+    partitionTableOffset.value = offset;
+    const partitions = await runLoaderOperation(() =>
+      readPartitionTable(loaderInstance, offset, undefined, appendLog, {
+        onReadError: recordPartitionTableReadError,
+      }),
+    );
+    partitionTable.value = partitions;
+  } finally {
+    if (showDialog) {
+      connectDialog.visible = false;
+      connectDialog.label = previousDialog?.label ?? connectDialog.label;
+      connectDialog.message = previousDialog?.message ?? connectDialog.message;
+    }
+  }
+}
+
 // Flash the selected firmware image to the device.
 async function flashFirmware() {
-  if (!loader.value || !firmwareBuffer.value) {
+  const loaderInstance = loader.value;
+  if (!loaderInstance || !firmwareBuffer.value) {
     appendLog('Select a firmware binary and connect to a device first.', '[ESPConnect-Warn]');
     return;
   }
   if (flashInProgress.value || busy.value) return;
+  let shouldRefreshPartitions = false;
 
   let offsetNumber;
   try {
     offsetNumber = parseOffset(flashOffset.value);
   } catch (error) {
-    appendLog(error.message, '[error]');
+    appendLog(formatErrorMessage(error), '[error]');
     return;
   }
 
@@ -5636,6 +6575,7 @@ async function flashFirmware() {
     appendLog('Firmware flash cancelled by user.', '[ESPConnect-Warn]');
     return;
   }
+  shouldRefreshPartitions = true;
 
   flashInProgress.value = true;
   busy.value = true;
@@ -5643,6 +6583,7 @@ async function flashFirmware() {
   flashCancelRequested.value = false;
   flashProgressDialog.visible = true;
   flashProgressDialog.value = 0;
+  flashProgressDialog.indeterminate = false;
   flashProgressDialog.label = `Preparing ${firmwareLabel} @ ${flashBaudLabel}...`;
 
   appendLog(`Flashing ${firmwareLabel} at 0x${offsetNumber.toString(16)}...`);
@@ -5651,51 +6592,59 @@ async function flashFirmware() {
     const bytes = new Uint8Array(firmwareBuffer.value);
     const startTime = performance.now();
 
-    if (eraseFlash.value && typeof loader.value.eraseFlash === 'function') {
-      flashProgressDialog.label = `Erasing flash @ ${flashBaudLabel}...`;
-      await loader.value.eraseFlash();
-    }
+    await runLoaderOperation(async () => {
+      const eraseFlashFn = (loaderInstance as ESPLoader & { eraseFlash?: () => Promise<void> }).eraseFlash;
+      if (eraseFlash.value && typeof eraseFlashFn === 'function') {
+        flashProgressDialog.label = `Erasing flash @ ${flashBaudLabel}...`;
+        await eraseFlashFn.call(loaderInstance);
+      }
 
-    await loader.value.flashData(
-      bytes.buffer,
-      (written, total) => {
-        if (flashCancelRequested.value) {
-          throw new Error('Flash cancelled by user');
-        }
-        const pct = total ? Math.floor((written / total) * 100) : 0;
-        const clamped = Math.min(100, Math.max(0, pct));
-        flashProgress.value = clamped;
-        flashProgressDialog.visible = true;
-        flashProgressDialog.value = clamped;
-        const writtenLabel = written.toLocaleString();
-        const totalLabel = total ? total.toLocaleString() : '';
-        flashProgressDialog.label = total
-          ? `Flashing ${firmwareLabel} - ${writtenLabel} of ${totalLabel} bytes @ ${flashBaudLabel}`
-          : `Flashing ${firmwareLabel} - ${writtenLabel} bytes @ ${flashBaudLabel}`;
-      },
-      offsetNumber,
-      true
-    );
-
-    await loader.value.hardReset();
-    const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+      await loaderInstance.flashData(
+        bytes.buffer,
+        (written, total) => {
+          if (flashCancelRequested.value) {
+            throw new Error('Flash cancelled by user');
+          }
+          const pct = total ? Math.floor((written / total) * 100) : 0;
+          const clamped = Math.min(100, Math.max(0, pct));
+          flashProgress.value = clamped;
+          flashProgressDialog.visible = true;
+          flashProgressDialog.value = clamped;
+          const writtenLabel = written.toLocaleString();
+          const totalLabel = total ? total.toLocaleString() : '';
+          flashProgressDialog.label = total
+            ? `Flashing ${firmwareLabel} - ${writtenLabel} of ${totalLabel} bytes @ ${flashBaudLabel}`
+            : `Flashing ${firmwareLabel} - ${writtenLabel} bytes @ ${flashBaudLabel}`;
+        },
+        offsetNumber,
+        true
+      );
+    });
     flashProgressDialog.value = 100;
+    flashProgressDialog.label = 'Finalizing Flash...'
+    await esptoolClient.value?.syncWithStub();
+    const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
     flashProgressDialog.label = `Flash complete in ${elapsed}s @ ${flashBaudLabel}. Finalizing...`;
     appendLog(`Flashing complete in ${elapsed}s. Device rebooted.`);
   } catch (error) {
-    if (error?.message === 'Flash cancelled by user') {
+    const message = formatErrorMessage(error);
+    if (message === 'Flash cancelled by user') {
       appendLog('Flash cancelled by user.', '[ESPConnect-Warn]');
     } else {
-      appendLog(`Flashing failed: ${error?.message || error}`, '[error]');
+      appendLog(`Flashing failed: ${message}`, '[error]');
     }
   } finally {
     flashProgress.value = 0;
     flashInProgress.value = false;
-    busy.value = false;
     flashCancelRequested.value = false;
     flashProgressDialog.visible = false;
     flashProgressDialog.value = 0;
     flashProgressDialog.label = '';
+    flashProgressDialog.indeterminate = false;
+    if (shouldRefreshPartitions) {
+      await refreshPartitionTable(loaderInstance);
+    }
+    busy.value = false;
   }
 }
 
@@ -5723,6 +6672,7 @@ function resetMaintenanceState() {
   flashProgressDialog.visible = false;
   flashProgressDialog.value = 0;
   flashProgressDialog.label = '';
+  flashProgressDialog.indeterminate = false;
   flashCancelRequested.value = false;
   downloadProgress.visible = false;
   downloadProgress.value = 0;
@@ -5731,7 +6681,7 @@ function resetMaintenanceState() {
 }
 
 // Handle quick-selecting a register from the guide.
-function handleSelectRegister(address) {
+function handleSelectRegister(address: string) {
   if (!address) {
     return;
   }
@@ -5753,7 +6703,8 @@ function handleSelectRegister(address) {
 
 // Read a register value via the loader.
 async function handleReadRegister() {
-  if (!loader.value) {
+  const loaderInstance = loader.value;
+  if (!loaderInstance) {
     registerStatus.value = 'Connect to a device first.';
     registerStatusType.value = 'warning';
     return;
@@ -5762,13 +6713,13 @@ async function handleReadRegister() {
     maintenanceBusy.value = true;
     registerStatus.value = null;
     const address = parseNumericInput(registerAddress.value, 'Register address');
-    const value = await loader.value.readReg(address);
+    const value = await runLoaderOperation(() => loaderInstance.readRegister(address));
     registerReadResult.value = `0x${value.toString(16).toUpperCase().padStart(8, '0')}`;
     registerStatusType.value = 'success';
     registerStatus.value = `Read 0x${address.toString(16).toUpperCase()} = ${registerReadResult.value}`;
   } catch (error) {
     registerStatusType.value = 'error';
-    registerStatus.value = `Read failed: ${error?.message || error}`;
+    registerStatus.value = `Read failed: ${formatErrorMessage(error)}`;
   } finally {
     maintenanceBusy.value = false;
     downloadProgress.visible = false;
@@ -5777,7 +6728,8 @@ async function handleReadRegister() {
 
 // Write a value to the selected register via the loader.
 async function handleWriteRegister() {
-  if (!loader.value) {
+  const loaderInstance = loader.value;
+  if (!loaderInstance) {
     registerStatus.value = 'Connect to a device first.';
     registerStatusType.value = 'warning';
     return;
@@ -5787,7 +6739,7 @@ async function handleWriteRegister() {
     registerStatus.value = null;
     const address = parseNumericInput(registerAddress.value, 'Register address');
     const value = parseNumericInput(registerValue.value, 'Register value');
-    await loader.value.writeReg(address, value);
+    await runLoaderOperation(() => loaderInstance.writeRegister(address, value));
     registerReadResult.value = `0x${value.toString(16).toUpperCase().padStart(8, '0')}`;
     registerStatusType.value = 'success';
     registerStatus.value = `Wrote ${registerReadResult.value} to 0x${address
@@ -5799,7 +6751,7 @@ async function handleWriteRegister() {
     );
   } catch (error) {
     registerStatusType.value = 'error';
-    registerStatus.value = `Write failed: ${error?.message || error}`;
+    registerStatus.value = `Write failed: ${formatErrorMessage(error)}`;
   } finally {
     maintenanceBusy.value = false;
   }
@@ -5824,16 +6776,21 @@ async function handleComputeMd5() {
     }
     md5StatusType.value = 'info';
     md5Status.value = 'Calculating MD5 checksum...';
-    const result = await loader.value.flashMd5sum(offset, length);
+    const client = esptoolClient.value;
+    if (!client) {
+      throw new Error('ESPLoader client not available.');
+    }
+    const result = await client.flashMd5sum(offset, length);
     md5Status.value = null;
     md5Result.value = result;
+    showToast('MD5 checksum computed.', { color: 'success' });
     appendLog(
       `Computed MD5 for 0x${offset.toString(16).toUpperCase()} (${length} bytes): ${result}`,
       '[ESPConnect-Debug]'
     );
   } catch (error) {
     md5StatusType.value = 'error';
-    md5Status.value = `MD5 calculation failed: ${error?.message || error}`;
+    md5Status.value = `MD5 calculation failed: ${formatErrorMessage(error)}`;
     md5Result.value = null;
   } finally {
     maintenanceBusy.value = false;
@@ -5841,8 +6798,8 @@ async function handleComputeMd5() {
 }
 
 // Sanitize a string into a filesystem-safe filename.
-function sanitizeFileName(name, fallback) {
-  const base = name && name.trim() ? name.trim() : fallback;
+function sanitizeFileName(name: string | null | undefined, fallback: string) {
+  const base = typeof name === 'string' && name.trim() ? name.trim() : fallback;
   return base
     .replace(/[\/:*?"<>|]+/g, '_')
     .replace(/\s+/g, '_')
@@ -5853,7 +6810,7 @@ function sanitizeFileName(name, fallback) {
 
 // Timestamp helper for naming backup files.
 function formatBackupTimestamp(date = new Date()) {
-  const pad = value => String(value).padStart(2, '0');
+  const pad = (value: number) => String(value).padStart(2, '0');
   return (
     `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_` +
     `${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`
@@ -5862,7 +6819,8 @@ function formatBackupTimestamp(date = new Date()) {
 
 // Read a flash region and trigger a download with optional progress handling.
 async function downloadFlashRegion(offset: number, length: number, options: DownloadFlashOptions = {}) {
-  if (!loader.value) {
+  const loaderInstance = loader.value;
+  if (!loaderInstance) {
     throw new Error('Device not connected.');
   }
   if (!Number.isSafeInteger(offset) || offset < 0) {
@@ -5900,157 +6858,159 @@ async function downloadFlashRegion(offset: number, length: number, options: Down
 
   downloadCancelRequested.value = false;
 
-  const chunkBuffers = [];
+  const chunkBuffers: Uint8Array[] = [];
   const chunkSize = Math.max(0x1000, Math.min(MAX_CHUNK_SIZE, length));
   let totalReceived = 0;
   let buffer = null;
   let cancelled = false;
-  try {
-    while (totalReceived < length) {
-      if (downloadCancelRequested.value) {
-        cancelled = true;
-        break;
-      }
-      const remaining = length - totalReceived;
-      const currentChunkSize = Math.min(chunkSize, remaining);
-      const chunkOffset = offset + totalReceived;
-      const chunkBase = totalReceived;
-      const chunkBuffer = await loader.value.readFlash(
-        chunkOffset,
-        currentChunkSize,
-        (_packet, received) => {
-          const chunkReceived = Math.min(received, currentChunkSize);
-          const overallReceived = chunkBase + chunkReceived;
-          const progressValue = length
-            ? Math.min(100, Math.floor((overallReceived / length) * 100))
-            : 0;
-          let progressLabel =
-            'Downloading ' +
-            displayLabel +
-            ' @ ' +
-            baudLabel +
-            ' — ' +
-            overallReceived.toLocaleString() +
-            ' of ' +
-            length.toLocaleString() +
-            ' bytes';
-          if (downloadCancelRequested.value) {
-            progressLabel =
-              'Stopping download of ' +
+  return await runLoaderOperation(async () => {
+    try {
+      while (totalReceived < length) {
+        if (downloadCancelRequested.value) {
+          cancelled = true;
+          break;
+        }
+        const remaining = length - totalReceived;
+        const currentChunkSize = Math.min(chunkSize, remaining);
+        const chunkOffset = offset + totalReceived;
+        const chunkBase = totalReceived;
+        const chunkBuffer = await loaderInstance.readFlash(
+          chunkOffset,
+          currentChunkSize,
+          (_packet, received) => {
+            const chunkReceived = Math.min(received, currentChunkSize);
+            const overallReceived = chunkBase + chunkReceived;
+            const progressValue = length
+              ? Math.min(100, Math.floor((overallReceived / length) * 100))
+              : 0;
+            let progressLabel =
+              'Downloading ' +
               displayLabel +
-              ' after current chunk... (' +
+              ' @ ' +
+              baudLabel +
+              ' - ' +
               overallReceived.toLocaleString() +
               ' of ' +
               length.toLocaleString() +
-              ' bytes)';
+              ' bytes';
+            if (downloadCancelRequested.value) {
+              progressLabel =
+                'Stopping download of ' +
+                displayLabel +
+                ' after current chunk... (' +
+                overallReceived.toLocaleString() +
+                ' of ' +
+                length.toLocaleString() +
+                ' bytes)';
+            }
+            if (!suppressStatus) {
+              downloadProgress.visible = true;
+              downloadProgress.value = progressValue;
+              downloadProgress.label = progressLabel;
+              flashReadStatusType.value = 'info';
+              flashReadStatus.value = progressLabel;
+            }
+            if (typeof onProgress === 'function') {
+              onProgress({
+                value: progressValue,
+                label: progressLabel,
+                written: overallReceived,
+                total: length,
+              });
+            }
           }
-          if (!suppressStatus) {
-            downloadProgress.visible = true;
-            downloadProgress.value = progressValue;
-            downloadProgress.label = progressLabel;
-            flashReadStatusType.value = 'info';
-            flashReadStatus.value = progressLabel;
-          }
-          if (typeof onProgress === 'function') {
-            onProgress({
-              value: progressValue,
-              label: progressLabel,
-              written: overallReceived,
-              total: length,
-            });
-          }
+        );
+        if (chunkBuffer.length !== currentChunkSize) {
+          throw new Error(
+            'Incomplete flash chunk (expected ' +
+            currentChunkSize +
+            ' bytes, received ' +
+            chunkBuffer.length +
+            ').'
+          );
         }
-      );
-      if (chunkBuffer.length !== currentChunkSize) {
+        chunkBuffers.push(chunkBuffer);
+        totalReceived += chunkBuffer.length;
+        if (downloadCancelRequested.value) {
+          cancelled = true;
+          break;
+        }
+      }
+
+      if (cancelled) {
+        throw new Error(CANCEL_ERROR_MESSAGE);
+      }
+
+      if (totalReceived !== length) {
         throw new Error(
-          'Incomplete flash chunk (expected ' +
-          currentChunkSize +
+          'Incomplete flash read (expected ' +
+          length +
           ' bytes, received ' +
-          chunkBuffer.length +
+          totalReceived +
           ').'
         );
       }
-      chunkBuffers.push(chunkBuffer);
-      totalReceived += chunkBuffer.length;
-      if (downloadCancelRequested.value) {
-        cancelled = true;
-        break;
+
+      if (chunkBuffers.length === 1) {
+        buffer = chunkBuffers[0];
+      } else {
+        buffer = new Uint8Array(totalReceived);
+        let writeOffset = 0;
+        for (const chunk of chunkBuffers) {
+          buffer.set(chunk, writeOffset);
+          writeOffset += chunk.length;
+        }
       }
-    }
-
-    if (cancelled) {
-      throw new Error(CANCEL_ERROR_MESSAGE);
-    }
-
-    if (totalReceived !== length) {
-      throw new Error(
-        'Incomplete flash read (expected ' +
-        length +
-        ' bytes, received ' +
-        totalReceived +
-        ').'
-      );
-    }
-
-    if (chunkBuffers.length === 1) {
-      buffer = chunkBuffers[0];
-    } else {
-      buffer = new Uint8Array(totalReceived);
-      let writeOffset = 0;
-      for (const chunk of chunkBuffers) {
-        buffer.set(chunk, writeOffset);
-        writeOffset += chunk.length;
+    } finally {
+      if (cancelled && !suppressStatus) {
+        downloadProgress.visible = false;
       }
+      downloadCancelRequested.value = false;
     }
-  } finally {
-    if (cancelled && !suppressStatus) {
+
+    const blob = new Blob([toArrayBuffer(buffer)], { type: 'application/octet-stream' });
+    const baseName =
+      fileName ||
+      sanitizeFileName((label || 'flash') + '_' + offsetHex + '_' + lengthHex, 'flash_' + offsetHex + '_' + lengthHex);
+    const finalName = baseName.endsWith('.bin') ? baseName : baseName + '.bin';
+
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = finalName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    if (!suppressStatus) {
       downloadProgress.visible = false;
+      downloadProgress.value = 100;
+      downloadProgress.label = 'Download complete @ ' + baudLabel;
+      flashReadStatusType.value = 'success';
+      flashReadStatus.value =
+        'Downloaded ' +
+        finalName +
+        ' (' +
+        length.toLocaleString() +
+        ' bytes) @ ' +
+        baudLabel +
+        '.';
     }
-    downloadCancelRequested.value = false;
-  }
-
-  const blob = new Blob([buffer], { type: 'application/octet-stream' });
-  const baseName =
-    fileName ||
-    sanitizeFileName((label || 'flash') + '_' + offsetHex + '_' + lengthHex, 'flash_' + offsetHex + '_' + lengthHex);
-  const finalName = baseName.endsWith('.bin') ? baseName : baseName + '.bin';
-
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = finalName;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-  if (!suppressStatus) {
-    downloadProgress.visible = false;
-    downloadProgress.value = 100;
-    downloadProgress.label = 'Download complete @ ' + baudLabel;
-    flashReadStatusType.value = 'success';
-    flashReadStatus.value =
-      'Downloaded ' +
-      finalName +
-      ' (' +
-      length.toLocaleString() +
-      ' bytes) @ ' +
-      baudLabel +
-      '.';
-  }
-  if (typeof onProgress === 'function') {
-    onProgress({
-      value: 100,
-      label: 'Download complete.',
-      written: length,
-      total: length,
-    });
-  }
-  appendLog(
-    'Downloaded ' + displayLabel + ' to ' + finalName + ' @ ' + baudLabel + '.',
-    '[ESPConnect-Debug]'
-  );
-  return finalName;
+    if (typeof onProgress === 'function') {
+      onProgress({
+        value: 100,
+        label: 'Download complete.',
+        written: length,
+        total: length,
+      });
+    }
+    appendLog(
+      'Downloaded ' + displayLabel + ' to ' + finalName + ' @ ' + baudLabel + '.',
+      '[ESPConnect-Debug]'
+    );
+    return finalName;
+  });
 }
 
 // Handle flash download flows (manual, partition, all, used, custom).
@@ -6160,14 +7120,14 @@ async function handleDownloadFlash(payload: DownloadFlashPayload = { mode: 'manu
     }
 
     if (mode === 'custom') {
-      const offset = payload && payload.offset;
-      const length = payload && payload.length;
-      if (!Number.isInteger(offset) || !Number.isInteger(length)) {
+      const offset = payload?.offset;
+      const length = payload?.length;
+      if (typeof offset !== 'number' || !Number.isInteger(offset) || typeof length !== 'number' || !Number.isInteger(length)) {
         throw new Error('Custom download requires numeric offset and length.');
       }
       await downloadFlashRegion(offset, length, {
-        label: payload && payload.label,
-        fileName: payload && payload.fileName,
+        label: payload?.label,
+        fileName: payload?.fileName,
       });
       return;
     }
@@ -6176,12 +7136,13 @@ async function handleDownloadFlash(payload: DownloadFlashPayload = { mode: 'manu
     flashReadStatus.value = 'Unsupported download mode.';
   } catch (error) {
     downloadProgress.visible = false;
-    if (error && error.message === 'Download cancelled by user') {
+    const errorMessage = formatErrorMessage(error);
+    if (errorMessage === 'Download cancelled by user') {
       flashReadStatusType.value = 'warning';
       flashReadStatus.value = 'Download cancelled.';
     } else {
       flashReadStatusType.value = 'error';
-      flashReadStatus.value = 'Download failed: ' + (error && error.message ? error.message : error);
+      flashReadStatus.value = 'Download failed: ' + errorMessage;
     }
   } finally {
     maintenanceBusy.value = false;
@@ -6242,7 +7203,7 @@ function handleCancelDownload(options: CancelDownloadOptions = {}) {
 }
 
 // Update flash read inputs when a partition option is chosen.
-function handleSelectPartition(value) {
+function handleSelectPartition(value: PartitionOptionValue) {
   selectedPartitionDownload.value = value;
   const option = partitionOptionLookup.value.get(value);
   if (option) {
@@ -6255,7 +7216,7 @@ function handleSelectPartition(value) {
 }
 
 // Update MD5 target inputs based on integrity partition selection.
-function handleSelectIntegrityPartition(value) {
+function handleSelectIntegrityPartition(value: PartitionOptionValue) {
   integrityPartition.value = value;
   const option = partitionOptionLookup.value.get(value);
   if (option) {
@@ -6280,69 +7241,347 @@ function handleSelectIntegrityPartition(value) {
 
 
 
-// Erase flash (currently full-chip only) with confirmation.
-async function handleEraseFlash(payload = { mode: 'full' }) {
-  if (!loader.value) {
-    flashReadStatus.value = 'Connect to a device first.';
+// Erase a specific flash region by streaming 0xFF blocks to the loader.
+async function eraseFlashRegion(offset: number, length: number, options: { label?: string } = {}) {
+  const loaderInstance = loader.value as ESPLoader & { getFlashWriteSize?: () => number; IS_STUB?: boolean };
+  if (!loaderInstance) {
+    throw new Error('Device not connected.');
+  }
+  if (!Number.isSafeInteger(offset) || offset < 0) {
+    throw new Error('Invalid flash offset.');
+  }
+  if (!Number.isSafeInteger(length) || length <= 0) {
+    throw new Error('Invalid flash length.');
+  }
+  const writeSize = typeof loaderInstance.getFlashWriteSize === 'function' ? loaderInstance.getFlashWriteSize() : 0x4000;
+  if (!eraseFillBlock || eraseFillBlock.length !== writeSize) {
+    eraseFillBlock = new Array(writeSize).fill(0xff);
+  }
+  const totalBlocks = Math.ceil(length / writeSize);
+  const baseLabel =
+    options.label && options.label.trim()
+      ? `${t('flashFirmware.backup.status.erasingRegion')} (${options.label})`
+      : t('flashFirmware.backup.status.erasingRegion');
+
+  flashProgressDialog.visible = true;
+  flashProgressDialog.indeterminate = false;
+  flashProgressDialog.value = 0;
+  flashProgressDialog.label = baseLabel;
+  flashCancelRequested.value = false;
+
+  await runLoaderOperation(async () => {
+    await loaderInstance.flashBegin(length, offset);
+    for (let seq = 0; seq < totalBlocks; seq += 1) {
+      if (flashCancelRequested.value) {
+        throw new Error(ERASE_CANCEL_MESSAGE);
+      }
+      await loaderInstance.flashBlock(eraseFillBlock as number[], seq);
+      const written = Math.min(length, (seq + 1) * writeSize);
+      const pct = Math.min(100, Math.floor((written / length) * 100));
+      flashProgressDialog.value = pct;
+      flashProgressDialog.label = `${baseLabel} - ${pct}%`;
+    }
+    if (loaderInstance.IS_STUB) {
+      await loaderInstance.flashBegin(0, 0);
+      await loaderInstance.flashFinish();
+    }
+  });
+
+  flashProgressDialog.value = 100;
+}
+
+// Erase flash with confirmation (entire chip, partition, or custom region).
+async function handleEraseFlash(payload: EraseFlashPayload = { mode: 'full' }) {
+  const loaderInstance = loader.value;
+  if (!loaderInstance) {
+    flashReadStatus.value = t('flashFirmware.backup.status.connectFirst');
     flashReadStatusType.value = 'warning';
     return;
   }
-  if (payload?.mode !== 'full') {
+
+  const mode = payload.mode ?? 'full';
+
+  if (mode === 'partition') {
+    const partitionPayload = payload as Extract<EraseFlashPayload, { mode: 'partition' }>;
+    const partitionValue = partitionPayload.partition ?? selectedPartitionDownload.value;
+    const option = partitionOptionLookup.value.get(partitionValue);
+    if (!option) {
+      flashReadStatusType.value = 'warning';
+      flashReadStatus.value = t('flashFirmware.backup.status.partitionRequired');
+      return;
+    }
+
+    const confirmErase = await showConfirmation({
+      title: t('flashFirmware.backup.erasePartitionConfirmTitle'),
+      message: t('flashFirmware.backup.erasePartitionConfirmMessage', {
+        label: option.baseLabel,
+        offset: option.offsetHex,
+        size: option.sizeText,
+      }),
+      confirmText: t('flashFirmware.backup.eraseConfirmButton'),
+      cancelText: t('dialogs.cancel'),
+      destructive: true,
+    });
+    if (!confirmErase) {
+      flashReadStatusType.value = 'info';
+      flashReadStatus.value = t('flashFirmware.backup.status.cancelled');
+      appendLog('Flash erase cancelled by user.', '[ESPConnect-Warn]');
+      return;
+    }
+
+    try {
+      maintenanceBusy.value = true;
+      flashInProgress.value = true;
+      flashReadStatusType.value = 'info';
+      flashReadStatus.value = t('flashFirmware.backup.status.erasingPartition');
+      await eraseFlashRegion(option.offset, option.size, { label: option.baseLabel });
+      flashReadStatusType.value = 'success';
+      flashReadStatus.value = t('flashFirmware.backup.status.partitionComplete');
+      appendLog(
+        `Partition erased: ${option.baseLabel} (${option.offsetHex}, ${option.sizeText}).`,
+        '[ESPConnect-Debug]',
+      );
+    } catch (error) {
+      const message = formatErrorMessage(error);
+      const cancelled = message === ERASE_CANCEL_MESSAGE;
+      flashReadStatusType.value = cancelled ? 'warning' : 'error';
+      flashReadStatus.value = cancelled
+        ? t('flashFirmware.backup.status.cancelled')
+        : t('flashFirmware.backup.status.failed', { error: message });
+    } finally {
+      maintenanceBusy.value = false;
+      flashInProgress.value = false;
+      flashProgressDialog.visible = false;
+      flashProgressDialog.value = 0;
+      flashProgressDialog.label = '';
+      flashProgressDialog.indeterminate = false;
+      flashCancelRequested.value = false;
+    }
+    return;
+  }
+
+  if (mode === 'region') {
+    let offset: number;
+    let length: number;
+    try {
+      const regionPayload = payload as Extract<EraseFlashPayload, { mode: 'region' }>;
+      const offsetSource = regionPayload.offset ?? flashReadOffset.value;
+      const lengthSource = regionPayload.length ?? flashReadLength.value;
+      if (!offsetSource?.toString().trim() || !lengthSource?.toString().trim()) {
+        flashReadStatusType.value = 'warning';
+        flashReadStatus.value = t('flashFirmware.backup.status.regionRequired');
+        return;
+      }
+      offset = parseNumericInput(offsetSource as string, 'Flash offset');
+      length = parseNumericInput(lengthSource as string, 'Flash length');
+    } catch (error) {
+      flashReadStatusType.value = 'error';
+      flashReadStatus.value = formatErrorMessage(error);
+      return;
+    }
+    if (flashSizeBytes.value && offset + length > flashSizeBytes.value) {
+      flashReadStatusType.value = 'warning';
+      flashReadStatus.value = t('flashFirmware.backup.status.regionOutOfBounds');
+      return;
+    }
+
+    const offsetHex = '0x' + offset.toString(16).toUpperCase();
+    const lengthHex = '0x' + length.toString(16).toUpperCase();
+    const regionPayload = payload as Extract<EraseFlashPayload, { mode: 'region' }>;
+    const label = regionPayload.label || t('flashFirmware.backup.downloadRegion');
+    const confirmErase = await showConfirmation({
+      title: t('flashFirmware.backup.eraseRegionConfirmTitle'),
+      message: t('flashFirmware.backup.eraseRegionConfirmMessage', {
+        label,
+        offset: offsetHex,
+        length: length.toLocaleString(),
+      }),
+      confirmText: t('flashFirmware.backup.eraseConfirmButton'),
+      cancelText: t('dialogs.cancel'),
+      destructive: true,
+    });
+    if (!confirmErase) {
+      flashReadStatusType.value = 'info';
+      flashReadStatus.value = t('flashFirmware.backup.status.cancelled');
+      appendLog('Flash erase cancelled by user.', '[ESPConnect-Warn]');
+      return;
+    }
+
+    try {
+      maintenanceBusy.value = true;
+      flashInProgress.value = true;
+      flashReadStatusType.value = 'info';
+      flashReadStatus.value = t('flashFirmware.backup.status.erasingRegion');
+      await eraseFlashRegion(offset, length, { label: `${label} ${offsetHex} (${lengthHex})` });
+      flashReadStatusType.value = 'success';
+      flashReadStatus.value = t('flashFirmware.backup.status.regionComplete');
+      appendLog(`Flash region erased: ${offsetHex} length ${lengthHex}.`, '[ESPConnect-Debug]');
+    } catch (error) {
+      const message = formatErrorMessage(error);
+      const cancelled = message === ERASE_CANCEL_MESSAGE;
+      flashReadStatusType.value = cancelled ? 'warning' : 'error';
+      flashReadStatus.value = cancelled
+        ? t('flashFirmware.backup.status.cancelled')
+        : t('flashFirmware.backup.status.failed', { error: message });
+    } finally {
+      maintenanceBusy.value = false;
+      flashInProgress.value = false;
+      flashProgressDialog.visible = false;
+      flashProgressDialog.value = 0;
+      flashProgressDialog.label = '';
+      flashProgressDialog.indeterminate = false;
+      flashCancelRequested.value = false;
+    }
+    return;
+  }
+
+  const eraseFlashFn = (loaderInstance as ESPLoader & { eraseFlash?: () => Promise<void> }).eraseFlash;
+  if (!eraseFlashFn) {
     flashReadStatusType.value = 'warning';
-    flashReadStatus.value = 'Selective erase is not yet supported in this interface.';
+    flashReadStatus.value = t('flashFirmware.backup.status.unsupported');
     return;
   }
 
   const confirmErase = await showConfirmation({
-    title: 'Erase Entire Flash',
-    message: 'Erase the entire flash? This removes all data and cannot be undone.',
-    confirmText: 'Erase Flash',
-    cancelText: 'Cancel',
+    title: t('flashFirmware.backup.eraseConfirmTitle'),
+    message: t('flashFirmware.backup.eraseConfirmMessage'),
+    confirmText: t('flashFirmware.backup.eraseConfirmButton'),
+    cancelText: t('dialogs.cancel'),
     destructive: true,
   });
   if (!confirmErase) {
     flashReadStatusType.value = 'info';
-    flashReadStatus.value = 'Flash erase cancelled.';
+    flashReadStatus.value = t('flashFirmware.backup.status.cancelled');
     appendLog('Flash erase cancelled by user.', '[ESPConnect-Warn]');
     return;
   }
 
+  let shouldRefreshPartitions = false;
   try {
     maintenanceBusy.value = true;
     flashReadStatusType.value = 'info';
-    flashReadStatus.value = 'Erasing entire flash...';
-    await loader.value.eraseFlash();
-    flashReadStatusType.value = 'success';
-    flashReadStatus.value = 'Flash erase complete.';
-    appendLog('Entire flash erased.', '[ESPConnect-Debug]');
+    flashReadStatus.value = t('flashFirmware.backup.status.erasing');
+    flashProgressDialog.visible = true;
+    flashProgressDialog.value = 0;
+    flashProgressDialog.indeterminate = true;
+    flashProgressDialog.label = t('flashFirmware.progress.erasingFlash');
+    await runLoaderOperation(() => eraseFlashFn.call(loaderInstance));
+    shouldRefreshPartitions = true;
   } catch (error) {
     flashReadStatusType.value = 'error';
-    flashReadStatus.value = `Erase failed: ${error?.message || error}`;
+    flashReadStatus.value = t('flashFirmware.backup.status.failed', {
+      error: formatErrorMessage(error),
+    });
   } finally {
     maintenanceBusy.value = false;
+    flashProgressDialog.visible = false;
+    flashProgressDialog.value = 0;
+    flashProgressDialog.label = '';
+    flashProgressDialog.indeterminate = false;
+    if (shouldRefreshPartitions) {
+      await refreshPartitionTable(loaderInstance);
+      flashReadStatusType.value = 'success';
+      flashReadStatus.value = t('flashFirmware.backup.status.complete');
+      appendLog('Entire flash erased.', '[ESPConnect-Debug]');
+    }
   }
 }
 
 // Load a firmware file into memory for flashing.
-async function handleFirmwareInput(files) {
-  if (!files || files.length === 0) {
+async function handleFirmwareInput(files: File | File[] | null) {
+  const file = Array.isArray(files) ? files[0] : files;
+  if (!file) {
     firmwareBuffer.value = null;
     firmwareName.value = '';
     return;
   }
-  const file = Array.isArray(files) ? files[0] : files;
-  if (!file) return;
   firmwareBuffer.value = await file.arrayBuffer();
   firmwareName.value = file.name;
   appendLog(`Firmware loaded: ${file.name} (${file.size} bytes).`);
 }
 
 // Apply a preset flash offset value.
-function applyOffsetPreset(value) {
+function applyOffsetPreset(value: string | null | undefined) {
   if (value) {
     flashOffset.value = value;
     appendLog(`Applied preset offset ${value}.`);
   }
+}
+
+function formatSerialPortHexId(value: number | null | undefined): string | null {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? `0x${value.toString(16).toUpperCase().padStart(4, '0')}`
+    : null;
+}
+
+function getSerialPortPrimaryLabel(port: ElectronSerialPortPickerPort): string {
+  return port.portName || port.displayName || t('serialPortPicker.unknownPort');
+}
+
+function getSerialPortMetadata(port: ElectronSerialPortPickerPort): string {
+  const primary = getSerialPortPrimaryLabel(port);
+  const displayName = port.displayName && port.displayName !== primary ? port.displayName : null;
+  const vendorId = formatSerialPortHexId(port.vendorId);
+  const productId = formatSerialPortHexId(port.productId);
+  const usbId = vendorId && productId ? t('serialPortPicker.usbId', { vendorId, productId }) : null;
+  const serialNumber = port.serialNumber
+    ? t('serialPortPicker.serialNumber', { serialNumber: port.serialNumber })
+    : null;
+
+  return [displayName, usbId, serialNumber].filter(Boolean).join(' · ');
+}
+
+function resetSerialPortPicker() {
+  serialPortPicker.visible = false;
+  serialPortPicker.requestId = '';
+  serialPortPicker.ports = [];
+  serialPortPicker.selectedPortId = '';
+}
+
+function handleSerialPortPickerRequest(payload: ElectronSerialPortPickerRequest) {
+  const requestId = typeof payload?.requestId === 'string' ? payload.requestId : '';
+  const ports = Array.isArray(payload?.ports)
+    ? payload.ports.filter(port => typeof port.portId === 'string' && port.portId)
+    : [];
+
+  if (!requestId) {
+    return;
+  }
+
+  if (serialPortPicker.requestId && serialPortPicker.requestId !== requestId) {
+    window.electronAPI?.selectSerialPort(serialPortPicker.requestId, '');
+  }
+
+  if (ports.length === 0) {
+    window.electronAPI?.selectSerialPort(requestId, '');
+    resetSerialPortPicker();
+    return;
+  }
+
+  const defaultPortId =
+    payload.defaultPortId && ports.some(port => port.portId === payload.defaultPortId)
+      ? payload.defaultPortId
+      : ports.find(port => port.recommended)?.portId || ports[0].portId;
+
+  serialPortPicker.requestId = requestId;
+  serialPortPicker.ports = ports;
+  serialPortPicker.selectedPortId = defaultPortId;
+  serialPortPicker.visible = true;
+}
+
+function confirmSerialPortSelection(portId = serialPortPicker.selectedPortId) {
+  if (!serialPortPicker.requestId) {
+    return;
+  }
+  window.electronAPI?.selectSerialPort(serialPortPicker.requestId, portId || '');
+  resetSerialPortPicker();
+}
+
+function cancelSerialPortSelection() {
+  if (serialPortPicker.requestId) {
+    window.electronAPI?.selectSerialPort(serialPortPicker.requestId, '');
+  }
+  resetSerialPortPicker();
 }
 
 // Disconnect transport when the page is about to unload.
@@ -6354,6 +7593,7 @@ function handleBeforeUnload() {
 
 onMounted(() => {
   window.addEventListener('beforeunload', handleBeforeUnload);
+  removeSerialPortPickerListener = window.electronAPI?.onSerialPortPickerOpen?.(handleSerialPortPickerRequest) || null;
   if ('serial' in navigator && typeof navigator.serial?.addEventListener === 'function') {
     navigator.serial.addEventListener('disconnect', handleSerialDisconnectEvent);
   }
@@ -6361,6 +7601,9 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload);
+  removeSerialPortPickerListener?.();
+  removeSerialPortPickerListener = null;
+  cancelSerialPortSelection();
   if ('serial' in navigator && typeof navigator.serial?.removeEventListener === 'function') {
     navigator.serial.removeEventListener('disconnect', handleSerialDisconnectEvent);
   }
@@ -6595,5 +7838,39 @@ onBeforeUnmount(() => {
   margin: 0 auto;
   border-radius: 8px;
   background: color-mix(in srgb, var(--v-theme-surface) 60%, transparent);
+}
+
+.serial-port-picker__body {
+  padding-top: 14px;
+}
+
+.serial-port-picker__list {
+  max-height: min(58vh, 420px);
+  overflow-y: auto;
+  padding-block: 4px;
+}
+
+.serial-port-picker__item {
+  min-height: 72px;
+}
+
+.serial-port-picker__port-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.serial-port-picker__port-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.serial-port-picker__metadata {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

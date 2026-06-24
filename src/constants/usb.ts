@@ -1,4 +1,4 @@
-export const TIMEOUT_CONNECT = 1500;
+export const TIMEOUT_CONNECT = 0;
 
 export const SUPPORTED_VENDORS: SerialPortFilter[] = [
   { usbVendorId: 0x303a },

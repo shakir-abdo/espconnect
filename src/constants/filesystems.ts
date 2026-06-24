@@ -11,6 +11,7 @@ export const SPIFFS_TEXT_EXTENSIONS = [
   'md',
   'js',
   'ts',
+  'py',
   'css',
   'xml',
   'yaml',
@@ -50,4 +51,4 @@ export const SPIFFS_MAX_FILENAME_LENGTH = 31; // Default ESP32 SPIFFS objNameLen
 
 export const LITTLEFS_DEFAULT_BLOCK_SIZE = 4096;
 export const LITTLEFS_BLOCK_SIZE_CANDIDATES = [4096, 2048, 1024, 512];
-export const FATFS_DEFAULT_BLOCK_SIZE = 512;
+export const FATFS_DEFAULT_BLOCK_SIZE = 4096;

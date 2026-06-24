@@ -14,7 +14,7 @@ export const FACT_ICONS: Record<string, string> = {
   'eFuse Block Version': 'mdi-shield-key',
   'PWM/LEDC': 'mdi-waveform',
   'CPU Cores': 'mdi-animation',
-  'Max CPU Frequency':'mdi-speedometer'
+  'Max CPU Frequency': 'mdi-speedometer',
 };
 
 export const PRIMARY_FACTS = [
@@ -25,61 +25,97 @@ export const PRIMARY_FACTS = [
   'USB Bridge',
   'Connection Baud',
   'Embedded Flash',
-  ];
+];
 
-export const FACT_GROUP_CONFIG = [
+type FactLabelConfig = { label: string; key: string };
+
+type FactGroupConfig = {
+  title: string;
+  titleKey: string;
+  icon: string;
+  labels: FactLabelConfig[];
+};
+
+export const FACT_GROUP_CONFIG: FactGroupConfig[] = [
   {
     title: 'Package & Revision',
+    titleKey: 'package',
     icon: 'mdi-chip',
-    labels: ['Chip Variant', 'Package Form Factor', 'Revision','CPU Cores','Max CPU Frequency'],
+    labels: [
+      { label: 'Chip Variant', key: 'chipVariant' },
+      { label: 'Package Form Factor', key: 'packageFormFactor' },
+      { label: 'Revision', key: 'revision' },
+      { label: 'CPU Cores', key: 'cpuCores' },
+      { label: 'Max CPU Frequency', key: 'maxCpuFrequency' },
+    ],
   },
   {
     title: 'Embedded Memory',
+    titleKey: 'embeddedMemory',
     icon: 'mdi-memory',
     labels: [
-      'Embedded Flash',
-      'Embedded PSRAM',
-      'Flash ID',
-      'Flash Manufacturer',
-      'Flash Device',
-      'Flash Vendor (eFuse)',
-      'PSRAM Vendor (eFuse)',
+      { label: 'Embedded Flash', key: 'embeddedFlash' },
+      { label: 'Embedded PSRAM', key: 'embeddedPsr' },
+      { label: 'Flash ID', key: 'flashId' },
+      { label: 'Flash Manufacturer', key: 'flashManufacturer' },
+      { label: 'Flash Device', key: 'flashDevice' },
+      { label: 'Flash Vendor (eFuse)', key: 'flashVendorEfuse' },
+      { label: 'PSRAM Vendor (eFuse)', key: 'psramVendorEfuse' },
     ],
   },
   {
     title: 'Security',
+    titleKey: 'security',
     icon: 'mdi-shield-key-outline',
-    labels: ['eFuse Block Version',
-      'Flash Encryption',
-      'Flash Encryption Details',
-      'Flash Encryption Mode',
-      'Secure Boot',
-      'Secure Boot Type',
-      'JTAG Protection',
-      'USB Protection',
-      'Download-Mode Caches',
-      'Security Note'
+    labels: [
+      { label: 'eFuse Block Version', key: 'efuseBlockVersion' },
+      { label: 'Flash Encryption', key: 'flashEncryption' },
+      { label: 'Flash Encryption Details', key: 'flashEncryptionDetails' },
+      { label: 'Flash Encryption Mode', key: 'flashEncryptionMode' },
+      { label: 'Secure Boot', key: 'secureBoot' },
+      { label: 'Secure Boot Type', key: 'secureBootType' },
+      { label: 'JTAG Protection', key: 'jtagProtection' },
+      { label: 'USB Protection', key: 'usbProtection' },
+      { label: 'Download-Mode Caches', key: 'downloadModeCaches' },
+      { label: 'Security Note', key: 'securityNote' },
     ],
   },
   {
     title: 'Peripherals',
+    titleKey: 'peripherals',
     icon: 'mdi-waveform',
-    labels: ['PWM/LEDC'],
+    labels: [{ label: 'PWM/LEDC', key: 'pwmLedc' }],
   },
   {
     title: 'Connection',
+    titleKey: 'connection',
     icon: 'mdi-usb-port',
-    labels: ['USB Bridge', 'Connection Baud'],
+    labels: [
+      { label: 'USB Bridge', key: 'usbBridge' },
+      { label: 'Connection Baud', key: 'connectionBaud' },
+    ],
   },
   {
     title: 'Documentation',
+    titleKey: 'documentation',
     icon: 'mdi-book-open-page-variant',
     labels: [
-      'Hardware Reference',
-      'Datasheet',
-      'Technical Reference Manual',
-      'Errata',
-      'Hardware Design Guidelines',
+      { label: 'Hardware Reference', key: 'hardwareReference' },
+      { label: 'Datasheet', key: 'datasheet' },
+      { label: 'Technical Reference Manual', key: 'technicalReferenceManual' },
+      { label: 'Errata', key: 'errata' },
+      { label: 'Hardware Design Guidelines', key: 'hardwareDesignGuidelines' },
     ],
   },
 ];
+
+const FACT_LABEL_KEY_MAP = new Map<string, string>();
+FACT_GROUP_CONFIG.forEach(group => {
+  group.labels.forEach(entry => {
+    FACT_LABEL_KEY_MAP.set(entry.label, entry.key);
+  });
+});
+
+export function getFactLabelKey(label: string): string | undefined {
+  return FACT_LABEL_KEY_MAP.get(label);
+}

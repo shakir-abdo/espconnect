@@ -1,0 +1,64 @@
+{
+  "steps": [
+    {
+      "type": "response",
+      "opcode": "ESP_SYNC",
+      "value": "0x20120707",
+      "data": "00000000"
+    },
+    {
+      "type": "response",
+      "opcode": "ESP_GET_SECURITY_INFO",
+      "value": "0x0",
+      "data": "00000000000000000000000c090000000000000000000000"
+    },
+    {
+      "type": "response",
+      "opcode": "ESP_READ_REG",
+      "value": "0x18956b4c",
+      "data": "00000000"
+    },
+    {
+      "type": "response",
+      "opcode": "ESP_READ_REG",
+      "value": "0x3485",
+      "data": "00000000"
+    },
+    {
+      "type": "response",
+      "opcode": "ESP_READ_REG",
+      "value": "0x0",
+      "data": "00000000"
+    },
+    {
+      "type": "response",
+      "opcode": "ESP_READ_REG",
+      "value": "0x2040000",
+      "data": "00000000"
+    },
+    {
+      "type": "response",
+      "opcode": "ESP_CHANGE_BAUDRATE",
+      "value": "0x2040000",
+      "data": "00000000"
+    },
+    {
+      "type": "response",
+      "opcode": "ESP_GET_SECURITY_INFO",
+      "value": "0x2040000",
+      "data": "00000000000000000000000c090000000000000000000000"
+    },
+    {
+      "type": "response",
+      "opcode": "ESP_SYNC",
+      "value": "0x20120707",
+      "data": "00000000"
+    },
+    {
+      "type": "response",
+      "opcode": "ESP_CHANGE_BAUDRATE",
+      "value": "0x2040000",
+      "data": "00000000"
+    }
+  ]
+}

@@ -1,9 +1,9 @@
 <template>
   <v-card class="session-log-card" variant="tonal">
     <v-card-title class="session-log-title">
-      <div class="title-text">
+        <div class="title-text">
         <v-icon class="me-2" size="20">mdi-monitor</v-icon>
-        Session Log
+        {{ t('sessionLog.title') }}
       </div>
       <div class="session-log-actions">
         <v-btn
@@ -15,7 +15,7 @@
           :loading="copying"
           @click="copyLog"
         >
-          Copy
+          {{ t('sessionLog.actions.copy') }}
         </v-btn>
         <v-btn
           variant="text"
@@ -25,13 +25,13 @@
           :disabled="!logText"
           @click="emit('clear-log')"
         >
-          Clear
+          {{ t('sessionLog.actions.clear') }}
         </v-btn>
       </div>
     </v-card-title>
     <v-divider></v-divider>
     <v-card-text class="log-surface" ref="logSurface">
-      <pre class="log-output">{{ logText || 'Logs will appear here once actions begin.' }}</pre>
+      <pre class="log-output">{{ logText || t('sessionLog.emptyState') }}</pre>
     </v-card-text>
     <v-snackbar
       v-model="copyFeedback.visible"
@@ -44,31 +44,31 @@
   </v-card>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { nextTick, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+import type { SessionLogCopyFeedback, SessionLogTabEmits, SessionLogTabProps } from '../types/session-log';
 
-const props = defineProps({
-  logText: {
-    type: String,
-    default: '',
-  },
+const props = withDefaults(defineProps<SessionLogTabProps>(), {
+  logText: '',
 });
 
-const emit = defineEmits(['clear-log']);
+const emit = defineEmits<SessionLogTabEmits>();
+const { t } = useI18n();
 
-const logSurface = ref(null);
+const logSurface = ref<HTMLElement | null>(null);
 const copying = ref(false);
-const copyFeedback = ref({
+const copyFeedback = ref<SessionLogCopyFeedback>({
   visible: false,
   message: '',
   color: 'success',
 });
 
 function scrollToBottom() {
-  nextTick(() => {
-    if (logSurface.value) {
-      logSurface.value.scrollTop = logSurface.value.scrollHeight;
-    }
+  void nextTick(() => {
+    const el = logSurface.value;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
   });
 }
 
@@ -79,14 +79,14 @@ watch(
   }
 );
 
-async function copyLog() {
-  if (!props.logText || copying.value) {
+async function copyLog(): Promise<void> {
+  const text = props.logText;
+  if (!text || copying.value) {
     return;
   }
 
   try {
     copying.value = true;
-    const text = props.logText;
     if (typeof navigator !== 'undefined' && navigator?.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
     } else if (typeof document !== 'undefined') {
@@ -104,14 +104,14 @@ async function copyLog() {
     }
     copyFeedback.value = {
       visible: true,
-      message: 'Session log copied to clipboard.',
+      message: t('sessionLog.copySuccess'),
       color: 'success',
     };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to copy log', error);
     copyFeedback.value = {
       visible: true,
-      message: 'Unable to copy log. Please try again.',
+      message: t('sessionLog.copyError'),
       color: 'error',
     };
   } finally {

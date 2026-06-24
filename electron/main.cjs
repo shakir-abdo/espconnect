@@ -15,9 +15,70 @@ if (process.platform === 'win32') {
 }
 
 let mainWindow;
+let serialPortPickerRequestId = 0;
 
 // Store granted serial port devices
 const grantedDevices = new Map();
+const pendingSerialPortPickers = new Map();
+
+ipcMain.on('serial-port-picker:select', (event, payload) => {
+  const requestId = typeof payload?.requestId === 'string' ? payload.requestId : '';
+  const pending = pendingSerialPortPickers.get(requestId);
+  if (!pending || pending.webContentsId !== event.sender.id) {
+    return;
+  }
+
+  pendingSerialPortPickers.delete(requestId);
+  pending.cleanup();
+  pending.resolve(typeof payload?.portId === 'string' ? payload.portId : '');
+});
+
+function sanitizeSerialPort(port, index, recommended) {
+  const toStringOrUndefined = (value) => (typeof value === 'string' && value ? value : undefined);
+  const toNumberOrUndefined = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
+
+  return {
+    index,
+    portId: toStringOrUndefined(port?.portId) || '',
+    portName: toStringOrUndefined(port?.portName),
+    displayName: toStringOrUndefined(port?.displayName),
+    serialNumber: toStringOrUndefined(port?.serialNumber),
+    vendorId: toNumberOrUndefined(port?.vendorId),
+    productId: toNumberOrUndefined(port?.productId),
+    recommended,
+  };
+}
+
+function requestSerialPortFromRenderer(webContents, ports, defaultPortId) {
+  if (!webContents || webContents.isDestroyed()) {
+    return Promise.resolve('');
+  }
+
+  const requestId = `serial-port-${Date.now()}-${++serialPortPickerRequestId}`;
+
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      webContents.removeListener('destroyed', handleDestroyed);
+    };
+    const handleDestroyed = () => {
+      pendingSerialPortPickers.delete(requestId);
+      resolve('');
+    };
+
+    pendingSerialPortPickers.set(requestId, {
+      webContentsId: webContents.id,
+      resolve,
+      cleanup,
+    });
+
+    webContents.once('destroyed', handleDestroyed);
+    webContents.send('serial-port-picker:open', {
+      requestId,
+      ports,
+      defaultPortId,
+    });
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -34,14 +95,31 @@ function createWindow() {
     autoHideMenuBar: false,
   });
 
-  // Load the index.html from the dist folder (after Vite build)
   const indexPath = path.join(__dirname, '..', 'dist', 'index.html');
-  
-  if (fs.existsSync(indexPath)) {
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
+  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+
+  if (isDev) {
+    mainWindow.loadURL(devServerUrl).catch((error) => {
+      console.warn(
+        `[ESPConnect] Failed to load Vite dev server at ${devServerUrl}; falling back to built assets if available.`,
+        error
+      );
+
+      if (fs.existsSync(indexPath)) {
+        return mainWindow.loadFile(indexPath);
+      }
+
+      dialog.showErrorBox(
+        'ESPConnect',
+        `Could not load the Vite dev server at ${devServerUrl}.\n\nStart it with: npm run dev`
+      );
+      app.quit();
+    });
+  } else if (fs.existsSync(indexPath)) {
     mainWindow.loadFile(indexPath);
   } else {
-    // Fallback to development server
-    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.loadURL(devServerUrl);
   }
 
   // Open DevTools in development
@@ -58,8 +136,32 @@ function createWindow() {
 }
 
 function setupSerialPortHandlers(session) {
+  const isLikelyEspPort = (port) => {
+    const name = `${port?.displayName || ''} ${port?.portName || ''}`.toLowerCase();
+    return (
+      name.includes('cp210') ||
+      name.includes('cp2102') ||
+      name.includes('cp2104') ||
+      name.includes('ch910') ||
+      name.includes('ch340') ||
+      name.includes('ch341') ||
+      name.includes('ch343') ||
+      name.includes('ch9102') ||
+      name.includes('ftdi') ||
+      name.includes('ft232') ||
+      name.includes('usb') ||
+      name.includes('uart') ||
+      name.includes('silicon labs') ||
+      name.includes('esp32') ||
+      name.includes('esp8266') ||
+      name.includes('esp')
+    );
+  };
+
+  const getPortLabel = (port) => port?.displayName || port?.portName || port?.portId || 'Unknown port';
+
   // Handle serial port selection - shows when navigator.serial.requestPort() is called
-  session.on('select-serial-port', (event, portList, webContents, callback) => {
+  session.on('select-serial-port', async (event, portList, webContents, callback) => {
     event.preventDefault();
 
     console.log('Available serial ports:', portList.map(p => ({
@@ -68,34 +170,38 @@ function setupSerialPortHandlers(session) {
       displayName: p.displayName
     })));
 
-    if (portList && portList.length > 0) {
-      // Try to find ESP-compatible port
-      const espPort = portList.find(port => {
-        const name = (port.displayName || port.portName || '').toLowerCase();
-        return name.includes('cp210') ||
-               name.includes('cp2102') ||
-               name.includes('cp2104') ||
-               name.includes('ch910') ||
-               name.includes('ch340') ||
-               name.includes('ch341') ||
-               name.includes('ch343') ||
-               name.includes('ch9102') ||
-               name.includes('ftdi') ||
-               name.includes('ft232') ||
-               name.includes('usb') ||
-               name.includes('uart') ||
-               name.includes('silicon labs') ||
-               name.includes('esp32') ||
-               name.includes('esp8266') ||
-               name.includes('esp');
-      });
-
-      // Select ESP-compatible port or first available
-      const selectedPort = espPort || portList[0];
-      console.log('Selected port:', selectedPort.portId, selectedPort.displayName || selectedPort.portName);
-      callback(selectedPort.portId);
-    } else {
+    if (!portList || portList.length === 0) {
       console.log('No serial ports available');
+      callback('');
+      return;
+    }
+
+    if (portList.length === 1) {
+      const selectedPort = portList[0];
+      console.log('Only one serial port available; selecting:', selectedPort.portId);
+      callback(selectedPort.portId);
+      return;
+    }
+
+    const defaultIndex = Math.max(portList.findIndex(isLikelyEspPort), 0);
+
+    try {
+      const pickerPorts = portList
+        .map((port, index) => sanitizeSerialPort(port, index, index === defaultIndex))
+        .filter(port => port.portId);
+      const defaultPortId = pickerPorts.find(port => port.recommended)?.portId || pickerPorts[0]?.portId || '';
+      const selectedPortId = await requestSerialPortFromRenderer(webContents, pickerPorts, defaultPortId);
+      const selectedPort = portList.find(port => port.portId === selectedPortId);
+      if (!selectedPort) {
+        console.log('Serial port selection canceled');
+        callback('');
+        return;
+      }
+
+      console.log('Selected port:', selectedPort.portId, getPortLabel(selectedPort));
+      callback(selectedPort.portId);
+    } catch (error) {
+      console.error('Failed to show serial port picker:', error);
       callback('');
     }
   });

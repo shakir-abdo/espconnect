@@ -1,14 +1,28 @@
 <template>
-  <div v-if="!partitionSegments.length" class="partitions-empty">
-    <v-card class="partitions-empty__card partitions-empty__card--disconnected" variant="tonal">
+  <div v-if="readError" class="partitions-empty">
+    <v-alert type="error" variant="tonal" border="start" class="partitions-empty__alert">
+      <div class="partitions-empty__title">{{ t('partitions.error.title') }}</div>
+      <div class="partitions-empty__subtitle">
+        {{ t('partitions.error.message') }}
+      </div>
+      <div class="partitions-empty__detail">
+        {{ t('partitions.error.detail', { error: readError }) }}
+      </div>
+    </v-alert>
+  </div>
+  <div v-else-if="!partitionSegments.length" class="partitions-empty">
+    <v-card :class="[
+      'partitions-empty__card',
+      { 'partitions-empty__card--disconnected': !connected },
+    ]" variant="tonal">
       <v-card-text class="partitions-empty__body">
         <v-avatar class="partitions-empty__avatar" size="70">
           <v-icon size="34">mdi-table-refresh</v-icon>
         </v-avatar>
         <div class="partitions-empty__text">
-          <div class="partitions-empty__title">No partition data yet</div>
+          <div class="partitions-empty__title">{{ t('partitions.empty.title') }}</div>
           <div class="partitions-empty__subtitle">
-            Connect to an ESP32 to load its partition table (ESP8266 not supported).
+            {{ emptySubtitle }}
           </div>
         </div>
       </v-card-text>
@@ -17,33 +31,45 @@
   <div v-else class="partition-view">
     <v-card variant="tonal" prepend-icon="mdi-table">
       <template v-slot:title>
-        <span class="font-weight-black">{{ partitionCardTitle }}</span>
+        <div class="partition-title">
+          <span class="font-weight-black">{{ partitionCardTitle }}</span>
+          <span class="partition-used">{{ t('partitions.usageSummary', { size: totalUsedDisplay }) }}</span>
+        </div>
       </template>
       <v-alert v-if="showUnusedAlert" type="warning" variant="tonal" class="unused-alert">
         <div>
-          Unused flash detected - about {{ unusedReadable }} ({{ unusedBytesDisplay }} bytes) is reclaimable.
+          {{ t('partitions.alerts.unusedFlash.detected', {
+            amount: unusedReadable,
+            bytes: unusedBytesDisplay,
+          }) }}
         </div>
         <div>
-          See the
+          {{ t('partitions.alerts.unusedFlash.learn') }}
           <a href="https://youtu.be/EuHxodrye6E" target="_blank" rel="noopener noreferrer">
-            partition tutorial
+            {{ t('partitions.alerts.resources.tutorial') }}
           </a>
-          or try the
-          <a href="https://thelastoutpostworkshop.github.io/microcontroller_devkit/esp32partitionbuilder/"
-            target="_blank" rel="noopener noreferrer">
-            ESP32 partition builder
+          {{ t('partitions.alerts.unusedFlash.or') }}
+          <a
+            :href="partitionBuilderUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {{ t('partitions.alerts.resources.builder') }}
           </a>.
         </div>
       </v-alert>
       <v-alert v-else type="info" variant="tonal" class="unused-alert">
-        Want to customize this layout? Watch the
+        {{ t('partitions.alerts.customizePrompt') }}
         <a href="https://youtu.be/EuHxodrye6E" target="_blank" rel="noopener noreferrer">
-          partition tutorial
+          {{ t('partitions.alerts.resources.tutorial') }}
         </a>
-        or open the
-        <a href="https://thelastoutpostworkshop.github.io/microcontroller_devkit/esp32partitionbuilder/"
-          target="_blank" rel="noopener noreferrer">
-          ESP32 partition builder
+        {{ t('partitions.alerts.customizeOr') }}
+        <a
+          :href="partitionBuilderUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {{ t('partitions.alerts.resources.builder') }}
         </a>.
       </v-alert>
       <div class="partition-map">
@@ -63,7 +89,7 @@
               backgroundImage: segment.backgroundImage || undefined,
             }">
               <span v-if="segment.showLabel" class="partition-label">
-                {{ segment.label || 'Unnamed' }}
+                {{ segment.label || t('partitions.unnamed') }}
               </span>
               <span v-if="segment.showMeta" class="partition-meta">
                 {{ segment.sizeText }} - {{ segment.offsetHex }}
@@ -72,7 +98,7 @@
           </template>
           <template #default>
             <div class="partition-tooltip">
-              <div class="partition-tooltip__title">{{ segment.label || 'Unnamed' }}</div>
+              <div class="partition-tooltip__title">{{ segment.label || t('partitions.unnamed') }}</div>
               <div v-for="line in segment.tooltipLines" :key="line" class="partition-tooltip__line">
                 {{ line }}
               </div>
@@ -83,28 +109,28 @@
       <v-table density="comfortable" class="mt-4">
         <thead>
           <tr>
-            <th>Label</th>
-            <th>Type</th>
-            <th>Subtype</th>
-            <th>Offset</th>
-            <th>Size</th>
+          <th>{{ t('partitions.table.label') }}</th>
+          <th>{{ t('partitions.table.type') }}</th>
+          <th>{{ t('partitions.table.subtype') }}</th>
+          <th>{{ t('partitions.table.offset') }}</th>
+          <th>{{ t('partitions.table.size') }}</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="entry in formattedPartitions" :key="entry.offset" class="partition-table-row">
-            <td>
-              <div class="partition-table-label">
-                <span class="partition-color-pip" :style="{
-                  backgroundColor: entry.color,
-                  backgroundImage: entry.backgroundImage || undefined,
-                }"></span>
-                <span>{{ entry.label || 'Unnamed' }}</span>
-              </div>
-            </td>
-            <td>{{ entry.typeLabel }}</td>
-            <td>{{ entry.subtypeLabel }}</td>
-            <td>{{ entry.offsetHex }}</td>
-            <td>{{ entry.sizeText }}</td>
+            <tr v-for="entry in formattedPartitions" :key="entry.offset" class="partition-table-row">
+              <td>
+                <div class="partition-table-label">
+                  <span class="partition-color-pip" :style="{
+                    backgroundColor: entry.color,
+                    backgroundImage: entry.backgroundImage || undefined,
+                  }"></span>
+                <span>{{ entry.label || t('partitions.unnamed') }}</span>
+                </div>
+              </td>
+              <td>{{ entry.typeLabel }}</td>
+              <td>{{ entry.subtypeLabel }}</td>
+              <td>{{ entry.offsetHex }}</td>
+              <td>{{ entry.sizeText }}</td>
           </tr>
         </tbody>
       </v-table>
@@ -115,39 +141,100 @@
 
 </template>
 
-<script setup>
-import { computed, toRefs } from 'vue';
+<script setup lang="ts">
+import { computed, onMounted, toRefs } from 'vue';
+import { useI18n } from 'vue-i18n';
+import type { FormattedPartitionRow, PartitionSegment, UnusedFlashSummary } from '../types/partitions';
+import {
+  buildPartitionCsv,
+  encodeCsvAsBase64,
+  formatBytes,
+  isReservedPartition,
+} from '../utils/partitionCsv';
 
-const props = defineProps({
-  partitionSegments: {
-    type: Array,
-    default: () => [],
+const props = withDefaults(
+  defineProps<{
+    partitionSegments?: PartitionSegment[];
+    formattedPartitions?: FormattedPartitionRow[];
+    unusedSummary?: UnusedFlashSummary | null;
+    flashSizeLabel?: string | null;
+    connected?: boolean;
+    readError?: string | null;
+  }>(),
+  {
+    partitionSegments: () => [],
+    formattedPartitions: () => [],
+    unusedSummary: null,
+    flashSizeLabel: '',
+    connected: false,
+    readError: null,
   },
-  formattedPartitions: {
-    type: Array,
-    default: () => [],
-  },
-  unusedSummary: {
-    type: Object,
-    default: null,
-  },
-  flashSizeLabel: {
-    type: String,
-    default: '',
-  },
-});
+);
 
-const { partitionSegments, formattedPartitions, unusedSummary, flashSizeLabel } = toRefs(props);
+const { partitionSegments, formattedPartitions, unusedSummary, flashSizeLabel, connected, readError } = toRefs(props);
+const { t } = useI18n();
+
+const PARTITION_BUILDER_URL =
+  'https://thelastoutpostworkshop.github.io/ESP32PartitionBuilder/';
 
 const showUnusedAlert = computed(() => Boolean(unusedSummary.value));
 const unusedReadable = computed(() => unusedSummary.value?.readable ?? '');
 const unusedBytesDisplay = computed(() =>
-  unusedSummary.value?.bytes != null ? unusedSummary.value.bytes.toLocaleString() : ''
+  unusedSummary.value?.bytes != null ? unusedSummary.value.bytes.toLocaleString() : '',
 );
 const partitionCardTitle = computed(() => {
   const label = flashSizeLabel.value?.trim();
-  return label ? `Partitions · ${label}` : 'Partitions';
+  return label ? t('partitions.cardTitleWithSize', { size: label }) : t('partitions.cardTitle');
 });
+const partitionCsvRows = computed(() =>
+  formattedPartitions.value.filter(
+    row => row.size > 0 && !row.isUnused && !isReservedPartition(row),
+  ),
+);
+const totalUsedBytes = computed(() => partitionCsvRows.value.reduce((total, row) => total + row.size, 0));
+const totalUsedDisplay = computed(() => formatBytes(totalUsedBytes.value) || `${totalUsedBytes.value} bytes`);
+const totalFlashBytes = computed(() => {
+  return partitionSegments.value.reduce((max, segment) => {
+    const end = segment.offset + segment.size;
+    return Math.max(max, end);
+  }, 0);
+});
+
+const flashSizeMB = computed(() => {
+  const bytes = totalFlashBytes.value;
+  if (!bytes) {
+    return 1;
+  }
+  const mb = bytes / (1024 * 1024);
+  return Math.max(1, Math.round(mb));
+});
+
+const partitionBuilderUrl = computed(() => {
+  const rows = partitionCsvRows.value;
+  if (!rows.length) {
+    return PARTITION_BUILDER_URL;
+  }
+  const csv = buildPartitionCsv(rows);
+  console.debug('partition CSV:\n' + csv);
+  const encoded = encodeCsvAsBase64(csv);
+  return `${PARTITION_BUILDER_URL}?flash=${flashSizeMB.value}&partitions=base64:${encoded}`;
+});
+const emptySubtitle = computed(() =>
+  connected.value ? t('partitions.empty.subtitleConnected') : t('partitions.empty.subtitle'),
+);
+
+onMounted(() => {
+  logPartitionCsv(partitionCsvRows.value);
+});
+
+function logPartitionCsv(rows: FormattedPartitionRow[]) {
+  if (!rows.length) {
+    console.info('partition CSV: (no partition rows)');
+    return;
+  }
+  console.info('partition CSV:\n' + buildPartitionCsv(rows));
+}
+
 </script>
 
 <style scoped>
@@ -155,6 +242,18 @@ const partitionCardTitle = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.partition-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.partition-used {
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--v-theme-on-surface) 56%, transparent);
 }
 
 .partitions-empty {
@@ -196,6 +295,10 @@ const partitionCardTitle = computed(() => {
   color: color-mix(in srgb, var(--v-theme-error) 85%, var(--v-theme-on-surface) 10%);
 }
 
+.partitions-empty__alert {
+  max-width: 720px;
+}
+
 .partitions-empty__title {
   font-size: 1.02rem;
   font-weight: 600;
@@ -205,6 +308,14 @@ const partitionCardTitle = computed(() => {
 .partitions-empty__subtitle {
   font-size: 0.92rem;
   color: color-mix(in srgb, var(--v-theme-on-surface) 65%, transparent);
+}
+
+.partitions-empty__detail {
+  color: color-mix(in srgb, var(--v-theme-on-surface) 65%, transparent);
+  font-family: monospace;
+  font-size: 0.86rem;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
 }
 
 .partition-map {

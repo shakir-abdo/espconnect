@@ -24,18 +24,18 @@
 
     <div v-if="loading" class="apps-tab__loading">
       <v-progress-circular indeterminate color="primary" size="28" />
-      <span class="ms-3 text-body-2">Reading application metadata…</span>
+      <span class="ms-3 text-body-2">{{ t('apps.alerts.readingMetadata') }}</span>
     </div>
 
     <template v-else>
       <v-alert
-        v-if="!apps.length"
+        v-if="!error && !apps.length"
         type="info"
         variant="tonal"
         density="comfortable"
         border="start"
       >
-        No application partitions detected.
+        {{ t('apps.alerts.noApplications') }}
       </v-alert>
 
       <div v-else class="apps-tab__list">
@@ -47,55 +47,55 @@
             </div>
             <div class="apps-tab__chips">
               <v-chip v-if="app.isActive" color="success" size="small" variant="elevated">
-                Active
+                {{ t('apps.chips.active') }}
               </v-chip>
               <v-chip v-if="!app.valid" color="warning" size="small" variant="outlined">
-                Encrypted/Invalid
+                {{ t('apps.chips.invalid') }}
               </v-chip>
             </div>
           </v-card-title>
           <v-card-subtitle class="apps-tab__subtitle">
-            Offset {{ app.offsetHex }} • Size {{ app.sizeText }}
+            {{ t('apps.subtitle', { offset: app.offsetHex, size: app.sizeText }) }}
           </v-card-subtitle>
           <v-card-text>
             <template v-if="app.valid">
               <div class="apps-tab__details">
                 <div class="apps-tab__detail">
-                  <span class="apps-tab__label">Project</span>
-                  <span class="apps-tab__value">{{ app.projectName || '—' }}</span>
+                  <span class="apps-tab__label">{{ t('apps.details.project') }}</span>
+                  <span class="apps-tab__value">{{ app.projectName || t('apps.unknown') }}</span>
                 </div>
                 <div class="apps-tab__detail">
-                  <span class="apps-tab__label">Version</span>
-                  <span class="apps-tab__value">{{ app.version || '—' }}</span>
+                  <span class="apps-tab__label">{{ t('apps.details.version') }}</span>
+                  <span class="apps-tab__value">{{ app.version || t('apps.unknown') }}</span>
                 </div>
                 <div class="apps-tab__detail">
-                  <span class="apps-tab__label">Built</span>
+                  <span class="apps-tab__label">{{ t('apps.details.built') }}</span>
                   <span class="apps-tab__value">
-                    {{ app.built || [app.buildDate, app.buildTime].filter(Boolean).join(' ') || '—' }}
+                    {{ app.built || [app.buildDate, app.buildTime].filter(Boolean).join(' ') || t('apps.unknown') }}
                   </span>
                 </div>
                 <div class="apps-tab__detail">
-                  <span class="apps-tab__label">IDF / Core</span>
-                  <span class="apps-tab__value">{{ app.idfVersion || '—' }}</span>
+                  <span class="apps-tab__label">{{ t('apps.details.core') }}</span>
+                  <span class="apps-tab__value">{{ app.idfVersion || t('apps.unknown') }}</span>
                 </div>
                 <div class="apps-tab__detail">
-                  <span class="apps-tab__label">Entry address</span>
-                  <span class="apps-tab__value">{{ app.entryAddressHex || '—' }}</span>
+                  <span class="apps-tab__label">{{ t('apps.details.entry') }}</span>
+                  <span class="apps-tab__value">{{ app.entryAddressHex || t('apps.unknown') }}</span>
                 </div>
                 <div class="apps-tab__detail">
-                  <span class="apps-tab__label">Segments</span>
+                  <span class="apps-tab__label">{{ t('apps.details.segments') }}</span>
                   <span class="apps-tab__value">
-                    {{ app.segmentCount != null ? app.segmentCount : '—' }}
+                    {{ app.segmentCount != null ? app.segmentCount : t('apps.unknown') }}
                   </span>
                 </div>
               </div>
               <div v-if="!app.descriptorFound" class="text-caption text-medium-emphasis mt-2">
-                Application descriptor not found in first 64 KB.
+                {{ t('apps.descriptorMissing') }}
               </div>
             </template>
             <template v-else>
               <v-alert type="warning" variant="tonal" density="comfortable" border="start">
-                {{ app.error || 'Encrypted or invalid image header.' }}
+                {{ app.error || t('apps.invalidImage') }}
               </v-alert>
             </template>
           </v-card-text>
@@ -105,29 +105,28 @@
   </div>
 </template>
 
-<script setup>
-defineProps({
-  apps: {
-    type: Array,
-    default: () => [],
+<script setup lang="ts">
+import { useI18n } from 'vue-i18n';
+import type { AppPartitionMetadata } from '../types/app-partitions';
+
+withDefaults(
+  defineProps<{
+    apps?: AppPartitionMetadata[];
+    activeSlotId?: string | null;
+    activeSummary?: string;
+    loading?: boolean;
+    error?: string | null;
+  }>(),
+  {
+    apps: () => [],
+    activeSlotId: null,
+    activeSummary: '',
+    loading: false,
+    error: null,
   },
-  activeSlotId: {
-    type: String,
-    default: null,
-  },
-  activeSummary: {
-    type: String,
-    default: '',
-  },
-  loading: {
-    type: Boolean,
-    default: false,
-  },
-  error: {
-    type: String,
-    default: null,
-  },
-});
+);
+
+const { t } = useI18n();
 </script>
 
 <style scoped>
