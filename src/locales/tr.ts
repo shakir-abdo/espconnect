@@ -16,11 +16,60 @@ const tr = {
     console: 'Seri Monitör',
     log: 'Session Log',
     about: 'Hakkında',
+    makerTools: 'Maker Araçları',
   },
   resources: {
     tutorial: 'Öğretici',
     buyCoffee: 'Bana Bir Kahve Ismarla',
     getHelp: 'Yardım Al',
+  },
+  makerTools: {
+    title: 'Maker Araçları',
+    subtitle: 'ESP32 ve gömülü projeler için The Last Outpost Workshop maker yardımcı araçları.',
+    thumbnailAlt: '{title} eğitim küçük resmi',
+    support: {
+      title: 'Projeyi destekle',
+      description:
+        'Bu maker yardımcı araçları ve ESPConnect ücretsizdir. Çalışma masanızda işinize yarıyorsa, bir kahve devam eden geliştirmeyi destekler.',
+      action: 'Bana Bir Kahve Ismarla',
+    },
+    actions: {
+      openTool: 'Aracı aç',
+      watchTutorial: 'Eğitimi izle',
+      watchSpecific: '{title} eğitimini izle',
+    },
+    items: {
+      espBoardVault: {
+        title: 'ESP Board Vault',
+        description:
+          'ESP Board Vault, ESP32 makerlarının kartlarını taramasına, tanımlamasına, düzenlemesine ve takip etmesine yardımcı olan ücretsiz, yerel öncelikli bir masaüstü envanter uygulamasıdır. Donanım ayrıntıları, bölüm haritaları, fotoğraflar, projeler, kontrol listeleri ve yedeklerle kart kayıtları oluşturun. Hesap yok, bulut backend yok, telemetri yok - her şey bilgisayarınızda kalır.',
+        sourceLabel: 'thelastoutpostworkshop/ESPVault',
+      },
+      partitionBuilder: {
+        title: 'ESP32 Partition Builder',
+        description:
+          'ESP32 Partition Builder, ESP32 kartları için özel bölüm düzenleri planlamaya ve oluşturmaya yardımcı olur.',
+        sourceLabel: 'thelastoutpostworkshop/ESP32PartitionBuilder',
+      },
+      videoConversion: {
+        title: 'Video Conversion Studio',
+        description:
+          'Video Conversion Studio, gömülü ekranlar için video varlıklarını dönüştürür. Normal video veya ses dosyalarını ESP32 ekran projelerine uygun çıktılara çevirebilirsiniz.',
+        sourceLabel: 'thelastoutpostworkshop/video_conversion',
+      },
+      gpioViewer: {
+        title: 'GPIOViewer',
+        description:
+          'GPIOViewer, GPIO pin etkinliğini doğrudan web tarayıcısında gerçek zamanlı gösterir; pin durumlarını incelemeyi, kart davranışını doğrulamayı ve kablolama veya sinyal etkinliğini gidermeyi kolaylaştırır.',
+        sourceLabel: 'thelastoutpostworkshop/gpio_viewer',
+      },
+      arduinoMakerWorkshop: {
+        title: 'Arduino Maker Workshop',
+        description:
+          'Arduino Maker Workshop, Arduino merkezli maker geliştirme için bir VS Code eklentisidir. Sketch odaklı projeler ve kart merkezli yineleme için daha odaklı bir editör iş akışı sunar.',
+        sourceLabel: 'VS Code Marketplace eklentisi',
+      },
+    },
   },
   actions: {
     connect: 'Bağlan',

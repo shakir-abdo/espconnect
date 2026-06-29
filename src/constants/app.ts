@@ -1,4 +1,6 @@
-export const APP_VERSION = '1.1.14';
+import { version as packageVersion } from '../../package.json';
+
+export const APP_VERSION = packageVersion;
 
 export const APP_IMAGE_HEADER_MAGIC = 0xe9;
 export const APP_DESCRIPTOR_MAGIC = 0xabcd5432;

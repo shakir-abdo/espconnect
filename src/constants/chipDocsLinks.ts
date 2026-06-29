@@ -20,10 +20,10 @@ export interface ChipDocsLinks {
    */
   hwReference: string;
 
-  /** Direct link to the English chip datasheet (PDF), when available. */
+  /** Direct link to the chip datasheet (PDF), when available. */
   datasheet?: string;
 
-  /** Direct link to the English Technical Reference Manual (TRM) PDF, when available. */
+  /** Direct link to the Technical Reference Manual (TRM) PDF, when available. */
   technicalReferenceManual?: string;
 
   /** SoC errata (HTML hub) for this chip family, when available. */
@@ -153,16 +153,147 @@ export const ESPRESSIF_CHIP_DOCS: Record<EspressifChipId, ChipDocsLinks> = {
   },
 };
 
+const ESPRESSIF_CHIP_DOCS_ZH: Partial<Record<EspressifChipId, Partial<ChipDocsLinks>>> = {
+  ESP32: {
+    hwReference:
+      'https://docs.espressif.com/projects/esp-idf/zh_CN/latest/esp32/hw-reference/index.html',
+    datasheet:
+      'https://documentation.espressif.com/esp32_datasheet_cn.pdf',
+    technicalReferenceManual:
+      'https://documentation.espressif.com/esp32_technical_reference_manual_cn.pdf',
+    errata:
+      'https://documentation.espressif.com/esp-chip-errata/zh_CN/latest/esp32/index.html',
+    hardwareDesignGuidelines:
+      'https://documentation.espressif.com/esp-hardware-design-guidelines/zh_CN/latest/esp32/index.html',
+  },
+
+  'ESP32-S2': {
+    hwReference:
+      'https://docs.espressif.com/projects/esp-idf/zh_CN/latest/esp32s2/hw-reference/index.html',
+    datasheet:
+      'https://documentation.espressif.com/esp32-s2_datasheet_cn.pdf',
+    technicalReferenceManual:
+      'https://documentation.espressif.com/esp32-s2_technical_reference_manual_cn.pdf',
+    errata:
+      'https://documentation.espressif.com/esp-chip-errata/zh_CN/latest/esp32s2/index.html',
+    hardwareDesignGuidelines:
+      'https://documentation.espressif.com/esp-hardware-design-guidelines/zh_CN/latest/esp32s2/index.html',
+  },
+
+  'ESP32-S3': {
+    hwReference:
+      'https://docs.espressif.com/projects/esp-idf/zh_CN/latest/esp32s3/hw-reference/index.html',
+    datasheet:
+      'https://documentation.espressif.com/esp32-s3_datasheet_cn.pdf',
+    technicalReferenceManual:
+      'https://documentation.espressif.com/esp32-s3_technical_reference_manual_cn.pdf',
+    errata:
+      'https://documentation.espressif.com/esp-chip-errata/zh_CN/latest/esp32s3/index.html',
+    hardwareDesignGuidelines:
+      'https://documentation.espressif.com/esp-hardware-design-guidelines/zh_CN/latest/esp32s3/index.html',
+  },
+
+  'ESP32-C2': {
+    hwReference:
+      'https://docs.espressif.com/projects/esp-idf/zh_CN/latest/esp32c2/hw-reference/index.html',
+    errata:
+      'https://documentation.espressif.com/esp-chip-errata/zh_CN/latest/esp32c2/index.html',
+    hardwareDesignGuidelines:
+      'https://documentation.espressif.com/esp-hardware-design-guidelines/zh_CN/latest/esp32c2/index.html',
+  },
+
+  'ESP32-C3': {
+    hwReference:
+      'https://docs.espressif.com/projects/esp-idf/zh_CN/latest/esp32c3/hw-reference/index.html',
+    datasheet:
+      'https://documentation.espressif.com/esp32-c3_datasheet_cn.pdf',
+    technicalReferenceManual:
+      'https://documentation.espressif.com/esp32-c3_technical_reference_manual_cn.pdf',
+    errata:
+      'https://documentation.espressif.com/esp-chip-errata/zh_CN/latest/esp32c3/index.html',
+    hardwareDesignGuidelines:
+      'https://documentation.espressif.com/esp-hardware-design-guidelines/zh_CN/latest/esp32c3/index.html',
+  },
+
+  'ESP32-C5': {
+    hwReference:
+      'https://docs.espressif.com/projects/esp-idf/zh_CN/latest/esp32c5/hw-reference/index.html',
+    datasheet:
+      'https://documentation.espressif.com/esp32-c5_datasheet_cn.pdf',
+    technicalReferenceManual:
+      'https://documentation.espressif.com/esp32-c5_technical_reference_manual_cn.pdf',
+    errata:
+      'https://documentation.espressif.com/esp-chip-errata/zh_CN/latest/esp32c5/index.html',
+    hardwareDesignGuidelines:
+      'https://documentation.espressif.com/esp-hardware-design-guidelines/zh_CN/latest/esp32c5/index.html',
+  },
+
+  'ESP32-C6': {
+    hwReference:
+      'https://docs.espressif.com/projects/esp-idf/zh_CN/latest/esp32c6/hw-reference/index.html',
+    datasheet:
+      'https://documentation.espressif.com/esp32-c6_datasheet_cn.pdf',
+    technicalReferenceManual:
+      'https://documentation.espressif.com/esp32-c6_technical_reference_manual_cn.pdf',
+    errata:
+      'https://documentation.espressif.com/esp-chip-errata/zh_CN/latest/esp32c6/index.html',
+    hardwareDesignGuidelines:
+      'https://documentation.espressif.com/esp-hardware-design-guidelines/zh_CN/latest/esp32c6/index.html',
+  },
+
+  'ESP32-H2': {
+    hwReference:
+      'https://docs.espressif.com/projects/esp-idf/zh_CN/latest/esp32h2/hw-reference/index.html',
+    datasheet:
+      'https://documentation.espressif.com/esp32-h2_datasheet_cn.pdf',
+    technicalReferenceManual:
+      'https://documentation.espressif.com/esp32-h2_technical_reference_manual_cn.pdf',
+    errata:
+      'https://documentation.espressif.com/esp-chip-errata/zh_CN/latest/esp32h2/index.html',
+    hardwareDesignGuidelines:
+      'https://documentation.espressif.com/esp-hardware-design-guidelines/zh_CN/latest/esp32h2/index.html',
+  },
+
+  'ESP32-P4': {
+    hwReference:
+      'https://docs.espressif.com/projects/esp-idf/zh_CN/latest/esp32p4/hw-reference/index.html',
+    datasheet:
+      'https://documentation.espressif.com/esp32-p4_datasheet_cn.pdf',
+    technicalReferenceManual:
+      'https://documentation.espressif.com/esp32-p4_technical_reference_manual_cn.pdf',
+    errata:
+      'https://documentation.espressif.com/esp-chip-errata/zh_CN/latest/esp32p4/index.html',
+    hardwareDesignGuidelines:
+      'https://documentation.espressif.com/esp-hardware-design-guidelines/zh_CN/latest/esp32p4/index.html',
+  },
+};
+
+function normalizeChipId(chipName: string): EspressifChipId | undefined {
+  const normalized = chipName.trim().toUpperCase();
+  const candidates = [
+    normalized,
+    normalized.replace(/^ESP32([SCHP]\d)/, 'ESP32-$1'),
+  ];
+
+  return candidates.find(
+    candidate => candidate in ESPRESSIF_CHIP_DOCS,
+  ) as EspressifChipId | undefined;
+}
+
 // Optional tiny helper if you want to be a bit more forgiving with incoming IDs.
 export function findChipDocs(
   chipName: string,
+  locale = 'en',
 ): ChipDocsLinks | undefined {
-  const normalized = chipName.trim().toUpperCase();
+  const chipId = normalizeChipId(chipName);
+  if (!chipId) return undefined;
 
-  const direct = (ESPRESSIF_CHIP_DOCS as Record<string, ChipDocsLinks>)[normalized];
-  if (direct) return direct;
+  const chipDocs = ESPRESSIF_CHIP_DOCS[chipId];
 
-  // Normalize common variants like "ESP32S3" -> "ESP32-S3"
-  const withDash = normalized.replace(/^ESP32([SC]\d)/, 'ESP32-$1');
-  return (ESPRESSIF_CHIP_DOCS as Record<string, ChipDocsLinks>)[withDash];
+  if (!locale.toLowerCase().startsWith('zh')) {
+    return chipDocs;
+  }
+
+  const localizedDocs = ESPRESSIF_CHIP_DOCS_ZH[chipId];
+  return localizedDocs ? { ...chipDocs, ...localizedDocs } : chipDocs;
 }

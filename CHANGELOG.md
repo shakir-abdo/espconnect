@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.1.17
+### Fixed
+- Device Information documentation links now use official Chinese Espressif docs when the UI language is Chinese, with English fallback when localized docs are unavailable ([issue #166](https://github.com/thelastoutpostworkshop/ESPConnect/issues/166)).
+
+## 1.1.16
+### Fixed
+- Maker Tools now follows the selected light theme instead of keeping dark cards in light mode.
+
+## 1.1.15
+### Improvement
+- Added a Maker Tools page under Resources with links, tutorials, and thumbnails for companion maker utilities.
+
+### Internal runtime
+- Bump tasmota-webserial-esptool from 7.3.7 to 7.3.10.
+- Bump Electron from 42.2.0 to 42.5.0.
+- Bump Vue from 3.5.34 to 3.5.38, vue-i18n from 11.4.4 to 11.4.6, and Vuetify from 4.0.7 to 4.1.2.
+
+### Development tooling
+- Bump Vite from 8.0.14 to 8.1.0, Vitest from 4.1.7 to 4.1.9, Playwright from 1.60.0 to 1.61.1, vue-tsc from 3.3.2 to 3.3.5, and Sass from 1.100.0 to 1.101.0.
+- Updated esptool contract test transcripts for the ESP32-S3 handshake sequence used by tasmota-webserial-esptool 7.3.10.
+
 ## 1.1.14
 ### Improvement
 - Added Czech translations. Thanks to macikm for the contribution ([PR #161](https://github.com/thelastoutpostworkshop/ESPConnect/pull/161)).

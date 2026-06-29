@@ -16,11 +16,60 @@ const fr = {
     console: 'Moniteur série',
     log: 'Registre',
     about: 'À propos',
+    makerTools: 'Outils maker',
   },
   resources: {
     tutorial: 'Tutoriel',
     buyCoffee: 'Achète-moi un café',
     getHelp: 'Aide',
+  },
+  makerTools: {
+    title: 'Outils maker',
+    subtitle: 'Utilitaires maker de The Last Outpost Workshop pour les projets ESP32 et embarqués.',
+    thumbnailAlt: 'Miniature du tutoriel {title}',
+    support: {
+      title: 'Soutenir le projet',
+      description:
+        'Ces utilitaires maker et ESPConnect sont gratuits. S’ils vous aident à l’atelier, un café soutient le développement continu.',
+      action: 'Offrir un café',
+    },
+    actions: {
+      openTool: 'Ouvrir l’outil',
+      watchTutorial: 'Voir le tutoriel',
+      watchSpecific: 'Voir le tutoriel {title}',
+    },
+    items: {
+      espBoardVault: {
+        title: 'ESP Board Vault',
+        description:
+          'ESP Board Vault est une application de bureau gratuite et locale pour l’inventaire, qui aide les makers ESP32 à scanner, identifier, organiser et suivre leurs cartes. Créez des fiches de cartes avec détails matériels, cartes de partitions, photos, projets, listes de contrôle et sauvegardes. Pas de compte, pas de backend cloud, pas de télémétrie : tout reste sur votre ordinateur.',
+        sourceLabel: 'thelastoutpostworkshop/ESPVault',
+      },
+      partitionBuilder: {
+        title: 'ESP32 Partition Builder',
+        description:
+          'ESP32 Partition Builder aide à planifier et créer des schémas de partitions personnalisés pour les cartes ESP32.',
+        sourceLabel: 'thelastoutpostworkshop/ESP32PartitionBuilder',
+      },
+      videoConversion: {
+        title: 'Video Conversion Studio',
+        description:
+          'Video Conversion Studio convertit les ressources vidéo pour les écrans embarqués. Utilisez des fichiers vidéo ou audio courants et transformez-les en sortie adaptée aux projets d’affichage ESP32.',
+        sourceLabel: 'thelastoutpostworkshop/video_conversion',
+      },
+      gpioViewer: {
+        title: 'GPIOViewer',
+        description:
+          'GPIOViewer offre une visualisation en temps réel de l’activité des broches GPIO directement dans un navigateur web, ce qui facilite l’inspection des états des broches, la confirmation du comportement de la carte et le dépannage du câblage ou des signaux.',
+        sourceLabel: 'thelastoutpostworkshop/gpio_viewer',
+      },
+      arduinoMakerWorkshop: {
+        title: 'Arduino Maker Workshop',
+        description:
+          'Arduino Maker Workshop est une extension VS Code pour le développement maker centré sur Arduino, avec un flux de travail ciblé pour les projets basés sur des sketches et les itérations autour des cartes.',
+        sourceLabel: 'Extension VS Code Marketplace',
+      },
+    },
   },
   actions: {
     connect: 'Connecter',

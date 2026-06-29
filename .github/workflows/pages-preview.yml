@@ -8,22 +8,27 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   deploy-preview:
     name: Build & deploy /preview from main
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: main
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6.4.0
         with:
           node-version: 22.12.0
           cache: npm
@@ -34,14 +39,50 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Deploy dist/ into gh-pages/preview/
-      - name: Deploy to gh-pages (preview)
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Prepare preview site
+        run: |
+          rm -rf pages-site
+          mkdir -p pages-site/preview
+          cp -R dist/. pages-site/preview/
+
+      - name: Resolve latest stable tag
+        id: stable
+        run: |
+          latest_tag="$(git tag --list 'v*' --sort=-v:refname | head -n 1)"
+          if [ -z "$latest_tag" ]; then
+            echo "No stable release tag found." >&2
+            exit 1
+          fi
+          echo "tag=$latest_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout latest stable tag
+        uses: actions/checkout@v5
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages
-          publish_dir: ./dist
-          destination_dir: preview
-          keep_files: true
-          enable_jekyll: false
-          commit_message: "Deploy preview (main) ${{ github.sha }}"
+          ref: ${{ steps.stable.outputs.tag }}
+          path: stable-source
+          fetch-depth: 1
+
+      - name: Install stable dependencies
+        working-directory: stable-source
+        run: npm ci
+
+      - name: Build stable
+        working-directory: stable-source
+        run: npm run build
+
+      - name: Add stable site
+        run: |
+          cp -R stable-source/dist/. pages-site/
+          touch pages-site/.nojekyll
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: pages-site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -16,11 +16,60 @@ const cs = {
     console: 'Sériový monitor',
     log: 'Protokol relace',
     about: 'O aplikaci',
+    makerTools: 'Nástroje pro makery',
   },
   resources: {
     tutorial: 'Návod',
     buyCoffee: 'Koupit kávu',
     getHelp: 'Získat pomoc',
+  },
+  makerTools: {
+    title: 'Nástroje pro makery',
+    subtitle: 'Maker nástroje od The Last Outpost Workshop pro projekty s ESP32 a vestavěnými systémy.',
+    thumbnailAlt: 'Miniatura návodu {title}',
+    support: {
+      title: 'Podpořit projekt',
+      description:
+        'Tyto maker nástroje a ESPConnect jsou zdarma. Pokud vám pomáhají při práci, káva podpoří další vývoj.',
+      action: 'Koupit kávu',
+    },
+    actions: {
+      openTool: 'Otevřít nástroj',
+      watchTutorial: 'Zobrazit návod',
+      watchSpecific: 'Zobrazit návod {title}',
+    },
+    items: {
+      espBoardVault: {
+        title: 'ESP Board Vault',
+        description:
+          'ESP Board Vault je bezplatná lokální desktopová inventární aplikace, která makerům s ESP32 pomáhá skenovat, identifikovat, organizovat a sledovat jejich desky. Vytvářejte záznamy desek s hardwarovými údaji, mapami oddílů, fotografiemi, projekty, checklisty a zálohami. Žádný účet, žádný cloudový backend, žádná telemetrie - vše zůstává ve vašem počítači.',
+        sourceLabel: 'thelastoutpostworkshop/ESPVault',
+      },
+      partitionBuilder: {
+        title: 'ESP32 Partition Builder',
+        description:
+          'ESP32 Partition Builder pomáhá plánovat a vytvářet vlastní rozvržení oddílů pro desky ESP32.',
+        sourceLabel: 'thelastoutpostworkshop/ESP32PartitionBuilder',
+      },
+      videoConversion: {
+        title: 'Video Conversion Studio',
+        description:
+          'Video Conversion Studio převádí video podklady pro vestavěné displeje. Běžné video nebo audio soubory můžete převést na výstup vhodný pro projekty s ESP32 displejem.',
+        sourceLabel: 'thelastoutpostworkshop/video_conversion',
+      },
+      gpioViewer: {
+        title: 'GPIOViewer',
+        description:
+          'GPIOViewer zobrazuje aktivitu GPIO pinů v reálném čase přímo ve webovém prohlížeči, takže usnadňuje kontrolu stavů pinů, ověření chování desky a ladění zapojení nebo signálů.',
+        sourceLabel: 'thelastoutpostworkshop/gpio_viewer',
+      },
+      arduinoMakerWorkshop: {
+        title: 'Arduino Maker Workshop',
+        description:
+          'Arduino Maker Workshop je rozšíření VS Code pro maker vývoj zaměřený na Arduino. Nabízí soustředěný pracovní postup pro projekty založené na sketchech a iterace kolem desek.',
+        sourceLabel: 'Rozšíření VS Code Marketplace',
+      },
+    },
   },
   actions: {
     connect: 'Připojit',

@@ -16,11 +16,60 @@ const de = {
     console: 'Serieller Monitor',
     log: 'Sitzungsprotokoll',
     about: 'Über',
+    makerTools: 'Maker-Werkzeuge',
   },
   resources: {
     tutorial: 'Tutorial',
     buyCoffee: 'Kauf mir einen Kaffee',
     getHelp: 'Hilfe erhalten',
+  },
+  makerTools: {
+    title: 'Maker-Werkzeuge',
+    subtitle: 'Maker-Werkzeuge von The Last Outpost Workshop für ESP32- und Embedded-Projekte.',
+    thumbnailAlt: 'Tutorial-Vorschaubild für {title}',
+    support: {
+      title: 'Projekt unterstützen',
+      description:
+        'Diese Maker-Werkzeuge und ESPConnect sind kostenlos nutzbar. Wenn sie dir an der Werkbank helfen, unterstützt ein Kaffee die weitere Entwicklung.',
+      action: 'Kauf mir einen Kaffee',
+    },
+    actions: {
+      openTool: 'Werkzeug öffnen',
+      watchTutorial: 'Tutorial ansehen',
+      watchSpecific: '{title}-Tutorial ansehen',
+    },
+    items: {
+      espBoardVault: {
+        title: 'ESP Board Vault',
+        description:
+          'ESP Board Vault ist eine kostenlose, lokale Desktop-Inventar-App, die ESP32-Makern hilft, ihre Boards zu scannen, zu identifizieren, zu organisieren und zu verfolgen. Erstelle Board-Datensätze mit Hardwaredetails, Partitionskarten, Fotos, Projekten, Checklisten und Backups. Kein Konto, kein Cloud-Backend, keine Telemetrie - alles bleibt auf deinem Computer.',
+        sourceLabel: 'thelastoutpostworkshop/ESPVault',
+      },
+      partitionBuilder: {
+        title: 'ESP32 Partition Builder',
+        description:
+          'ESP32 Partition Builder hilft beim Planen und Erstellen eigener Partitionslayouts für ESP32-Boards.',
+        sourceLabel: 'thelastoutpostworkshop/ESP32PartitionBuilder',
+      },
+      videoConversion: {
+        title: 'Video Conversion Studio',
+        description:
+          'Video Conversion Studio konvertiert Videoressourcen für eingebettete Displays. Nutze normale Video- oder Audiodateien und wandle sie in Ausgaben um, die zu ESP32-Displayprojekten passen.',
+        sourceLabel: 'thelastoutpostworkshop/video_conversion',
+      },
+      gpioViewer: {
+        title: 'GPIOViewer',
+        description:
+          'GPIOViewer visualisiert GPIO-Pin-Aktivität in Echtzeit direkt im Webbrowser. So lassen sich Pin-Zustände prüfen, das Boardverhalten bestätigen und Verdrahtung oder Signalaktivität leichter beheben.',
+        sourceLabel: 'thelastoutpostworkshop/gpio_viewer',
+      },
+      arduinoMakerWorkshop: {
+        title: 'Arduino Maker Workshop',
+        description:
+          'Arduino Maker Workshop ist eine VS Code-Erweiterung für Arduino-zentrierte Maker-Entwicklung mit einem fokussierten Editor-Workflow für sketchbasierte Projekte und boardorientierte Iteration.',
+        sourceLabel: 'VS Code Marketplace-Erweiterung',
+      },
+    },
   },
   actions: {
     connect: 'Verbinden',

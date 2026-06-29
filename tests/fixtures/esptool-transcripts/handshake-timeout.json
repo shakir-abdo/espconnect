@@ -12,6 +12,18 @@
       "value": "0x0",
       "data": "00000000000000000000000c090000000000000000000000"
     },
+    {
+      "type": "response",
+      "opcode": "ESP_READ_REG",
+      "value": "0x0",
+      "data": "00000000"
+    },
+    {
+      "type": "response",
+      "opcode": "ESP_READ_REG",
+      "value": "0x0",
+      "data": "00000000"
+    },
     { "type": "timeout", "opcode": "ESP_READ_REG" }
   ]
 }
